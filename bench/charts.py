@@ -43,9 +43,11 @@ def eyebrow(x, y, s, fill=MUTED, anchor="start"):
     return text(x, y, s.upper(), 12, fill, MONO, 500, anchor, 'letter-spacing="0.14em"')
 
 
-def header(slug: str, kicker: str, title: str, desc: str, h: int) -> list[str]:
+def header(slug: str, title: str, desc: str, h: int, dy: int) -> list[str]:
+    """Open the SVG. No visible heading: the README supplies context, so the drawing starts at the top.
+    Content is laid out in the original coordinates and shifted up by `dy`; the SVG is `h` tall."""
     return [
-        f'<svg viewBox="0 0 {W} {h}" width="{W}" height="{h}" xmlns="http://www.w3.org/2000/svg" role="img" '
+        f'<svg viewBox="0 {dy} {W} {h}" width="{W}" height="{h}" xmlns="http://www.w3.org/2000/svg" role="img" '
         f'aria-labelledby="{slug}-title {slug}-desc">',
         f'<title id="{slug}-title">{escape(title)}</title>',
         f'<desc id="{slug}-desc">{escape(desc)}</desc>',
@@ -53,9 +55,7 @@ def header(slug: str, kicker: str, title: str, desc: str, h: int) -> list[str]:
         f'<polygon points="0 0, 8 3, 0 6" fill="{MUTED}"/></marker>'
         '<marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">'
         f'<polygon points="0 0, 8 3, 0 6" fill="{ACCENT}"/></marker></defs>',
-        f'<rect width="100%" height="100%" fill="{PAPER}"/>',
-        eyebrow(32, 36, kicker),
-        text(32, 72, title, 28, INK, SERIF),
+        f'<rect y="{dy}" width="100%" height="100%" fill="{PAPER}"/>',
     ]
 
 
@@ -70,12 +70,13 @@ def page(slug: str, svg: list[str]) -> str:
 
 
 def how_it_works() -> tuple[str, int]:
-    h = 400
-    s = header("how-it-works", "How the benchmark works",
+    dy = 80
+    h = 400 - dy
+    s = header("how-it-works",
                "One small edit, four models, four scores",
                "Flow diagram: two halves of a contrastive pair differ by one word and have different correct "
                "answers; both go through the same prompt to TEV, JEV, GLM 5.3 and Opus 5.5, and each model is "
-               "scored on accuracy, pair accuracy, cost per task and speed.", h)
+               "scored on accuracy, pair accuracy, cost per task and speed.", h, dy)
     top, bottom = 136, 364  # shared vertical span of the prompt, model and score columns
     cols = {"pair": (32, 216), "prompt": (280, 152), "models": (484, 168), "score": (704, 144)}
     for key, label in (("pair", "1 · contrastive pair"), ("prompt", "2 · same prompt"),
@@ -139,7 +140,8 @@ def how_it_works() -> tuple[str, int]:
 
 
 def cost_vs_accuracy(summ: dict) -> tuple[str, int]:
-    h = 504
+    dy = 76
+    h = 504 - dy
     per_k = {p: summ[p]["cost_task"] * 1000 for p in summ}  # USD per 1,000 tasks
     frontier = [p for p in ("glm", "opus") if p in summ]
     ratios = [per_k[p] / per_k["jev"] for p in frontier]
@@ -150,9 +152,9 @@ def cost_vs_accuracy(summ: dict) -> tuple[str, int]:
     def money(usd):
         return f"{usd * 100:.0f}¢" if usd < 1 else f"${usd:.2f}"
 
-    s = header("cost-vs-accuracy", "Cost vs accuracy", title,
+    s = header("cost-vs-accuracy", title,
                "Scatter plot of accuracy against cost per million tasks on a log scale: TEV 90.0% at about $10, "
-               "JEV 97.2% at about $20, GLM 5.3 99.0% at about $810, Opus 5.5 99.2% at about $1,708.", h)
+               "JEV 97.2% at about $20, GLM 5.3 99.0% at about $810, Opus 5.5 99.2% at about $1,708.", h, dy)
     x0, x1, y0, y1 = 112, 824, 416, 136  # plot box
     lo, hi = math.log10(5), math.log10(5000)
     a_lo, a_hi = 85.0, 100.0
@@ -187,9 +189,9 @@ def cost_vs_accuracy(summ: dict) -> tuple[str, int]:
         r, fill, stroke = (6, "rgba(235,108,54,0.15)", ACCENT) if focal else (5, "rgba(79,93,117,0.20)", MUTED)
         s += [f'<circle cx="{x}" cy="{y}" r="{r}" fill="{PAPER}"/>',
               f'<circle cx="{x}" cy="{y}" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="1.2"/>']
-        dx, dy, anchor = place[p]
-        s.append(text(x + dx, y + dy, SHORT[p], 16, INK, SANS, 600, anchor))
-        s.append(text(x + dx, y + dy + 18, f"{acc:.1f}% · ${cost_1m:,.0f}", 12, MUTED, MONO, 400, anchor))
+        dx, ly, anchor = place[p]
+        s.append(text(x + dx, y + ly, SHORT[p], 16, INK, SANS, 600, anchor))
+        s.append(text(x + dx, y + ly + 18, f"{acc:.1f}% · ${cost_1m:,.0f}", 12, MUTED, MONO, 400, anchor))
 
     cheap = " and ".join(f"{SHORT[p]} {money(per_k[p])}" for p in ("tev", "jev"))
     dear = " and ".join(f"{SHORT[p]} {money(per_k[p])}" for p in frontier)
@@ -204,10 +206,11 @@ def cost_vs_accuracy(summ: dict) -> tuple[str, int]:
 
 def speed(summ: dict) -> tuple[str, int]:
     order = [p for p in ("tev", "jev", "glm", "opus") if p in summ]
-    h = 136 + 48 * len(order) + 48
-    s = header("speed", "Speed", "TEV answers in under a fifth of a second",
+    dy = 80
+    h = 136 + 48 * len(order) + 48 - dy
+    s = header("speed", "TEV answers in under a fifth of a second",
                "Horizontal bar chart of median latency per call: TEV 173 ms, JEV 459 ms, GLM 5.3 2,879 ms, "
-               "Opus 5.5 2,477 ms.", h)
+               "Opus 5.5 2,477 ms.", h, dy)
     x0, x1, top = 168, 760, 112
     vmax = 3000
     scale = (x1 - x0) / vmax
@@ -227,7 +230,7 @@ def speed(summ: dict) -> tuple[str, int]:
               f'<rect x="{x0}" y="{y}" width="{w}" height="24" fill="{PAPER}"/>',
               f'<rect x="{x0}" y="{y}" width="{w}" height="24" fill="{fill}" stroke="{stroke}" stroke-width="1"/>',
               text(x0 + w + 12, y + 17, f"{v:,.0f} ms", 12, ACCENT if focal else MUTED, MONO, 500)]
-    s.append(text(x0, h - 16, "Median wall-clock time per call, as seen by the caller. Lower is better.", 12, SOFT, SANS))
+    s.append(text(x0, h + dy - 16, "Median wall-clock time per call, as seen by the caller. Lower is better.", 12, SOFT, SANS))
     return page("speed", s), h
 
 
@@ -240,12 +243,13 @@ def prompts_matter(pdata: dict) -> tuple[str, int]:
     variants = [(v, d) for v, d in variants if ("tev", v) in pdata and ("jev", v) in pdata]
     row = 64
     top = 144
-    h = top + row * len(variants) + 116
-    s = header("prompts-matter", "Prompts matter too",
+    dy = 88
+    h = top + row * len(variants) + 116 - dy
+    s = header("prompts-matter",
                "Rewording barely matters. Option descriptions do.",
                "Diverging bar chart of accuracy change from each model's default prompt, for TEV and JEV under four "
                "prompt changes. Removing option descriptions costs TEV 6.8 points and JEV 4.5; other changes move "
-               "accuracy by under a point.", h)
+               "accuracy by under a point.", h, dy)
     x_lo, x_hi = -8.0, 2.0
     px0, px1 = 312, 712
     scale = (px1 - px0) / (x_hi - x_lo)
@@ -287,7 +291,7 @@ def prompts_matter(pdata: dict) -> tuple[str, int]:
         s.append(text(W - 40, y + 36, " / ".join(changed), 16, ACCENT if v == worst else MUTED, MONO, 500, "end"))
 
     # legend strip
-    ly = h - 20
+    ly = h + dy - 20
     s.append(f'<line x1="32" y1="{ly - 20}" x2="{W - 32}" y2="{ly - 20}" stroke="{RULE}" stroke-width="0.8"/>')
     s.append(eyebrow(32, ly, "legend"))
     for k, (m, color) in enumerate((("tev", SERIES_2), ("jev", SERIES_1))):
