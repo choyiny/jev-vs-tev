@@ -156,3 +156,14 @@ def test_get_provider_specs(monkeypatch):
         get_provider("tev.shouty")
     with pytest.raises(ValueError):
         get_provider("glm.careful")
+
+
+def test_reversed_and_generic_variants_keep_scoring_intact():
+    rev = tev.variant_item(ITEM, "reversed")
+    assert rev.keys == ["none", "cancel_subscription", "duplicate_charge"] and rev.gold == ITEM.gold
+    assert tev.parse_letter(rev, "A") == "none"  # letters follow the presented order
+    body = json.loads(tev.build_body(rev, "m", 0)["messages"][1]["content"])
+    assert body["options"][0]["key"] == "none"
+    assert list(jev.build_body(rev, "m")["questions"][jev.QUESTION_ID]["criteria"])[0] == "none"
+    gen = tev.variant_item(ITEM, "generic_question")
+    assert gen.question == tev.GENERIC_QUESTION and gen.state == ITEM.state

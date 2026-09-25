@@ -7,6 +7,7 @@ from the first output token, so calibration can be compared with Jev.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import os
@@ -29,11 +30,23 @@ CAREFUL = (
     "Read the whole input before deciding. Pay close attention to negations, dates and numbers, "
     "stated exceptions, and who is speaking."
 )
+GENERIC_QUESTION = "Which option best fits the input?"
 # Prompt variants, applied the same way to Jev (see jev.py):
-#   default   - the vendor-recommended prompt
-#   careful   - default plus one line of reading guidance
-#   keys_only - options as bare keys, no descriptions
-VARIANTS = ("default", "careful", "keys_only")
+#   default          - the vendor-recommended prompt
+#   careful          - default plus one line of reading guidance
+#   keys_only        - options as bare keys, no descriptions
+#   reversed         - same options in reverse order
+#   generic_question - the task-specific question swapped for GENERIC_QUESTION
+VARIANTS = ("default", "careful", "keys_only", "reversed", "generic_question")
+
+
+def variant_item(item: Item, variant: str) -> Item:
+    """The item as this prompt variant presents it. Keys and gold are unchanged, so scoring is too."""
+    if variant == "reversed":
+        return dataclasses.replace(item, options=tuple(reversed(item.options)))
+    if variant == "generic_question":
+        return dataclasses.replace(item, question=GENERIC_QUESTION)
+    return item
 
 
 def build_user_message(item: Item, variant: str = "default") -> str:
@@ -136,6 +149,7 @@ class TevProvider:
         self.headers = {"Authorization": f"Bearer {os.environ['TOGETHER_API_KEY']}"}
 
     async def predict(self, client: httpx.AsyncClient, item: Item) -> Prediction:
+        item = variant_item(item, self.variant)
         t0 = time.perf_counter()
         resp = await client.post(URL, json=build_body(item, self.model, self.logprobs, self.variant), headers=self.headers)
         latency = (time.perf_counter() - t0) * 1000

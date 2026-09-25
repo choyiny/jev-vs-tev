@@ -14,7 +14,21 @@
 | Accuracy | 90.0% | 97.2% | 99.0% | **99.2%** |
 | Both halves of a pair right | 80.0% | 95.0% | 98.0% | **98.5%** |
 
-400 held-out items (200 contrastive pairs, 8 task families). The whole experiment cost **$1.06** in API calls. Per-family scores, prompt variants, calibration and significance: [RESULTS.md](RESULTS.md).
+### Prompts matter too
+
+Same 400 items, same models, five prompt versions. Δ is the change from the default prompt; *answers changed* counts items where the answer differs from the default prompt's answer.
+
+| Prompt | TEV accuracy | JEV accuracy | TEV answers changed | JEV answers changed |
+|---|---:|---:|---:|---:|
+| `default`: vendor-recommended prompt | 90.0% | 97.2% | – | – |
+| `careful`: + one line of reading guidance | 89.8% (-0.3) | 97.2% (+0.0) | 1.2% | 1.0% |
+| `reversed`: same options, reverse order | 90.8% (+0.7) | 97.2% (+0.0) | 4.2% | 1.0% |
+| `generic_question`: "Which option best fits the input?" | 89.5% (-0.5) | 97.0% (-0.3) | 4.0% | 1.8% |
+| `keys_only`: option keys, no descriptions | 83.2% (-6.8) | 92.8% (-4.5) | 12.2% | 5.5% |
+
+Best vs worst prompt: TEV 7.5 points, JEV 4.5 points. Biggest single effect: `keys_only`. Answers can change even when accuracy doesn't: a prompt can fix some items and break others.
+
+400 held-out items (200 contrastive pairs, 8 task families). The whole experiment cost **$1.08** in API calls. Per-family scores, prompt variants, calibration and significance: [RESULTS.md](RESULTS.md).
 <!-- RESULTS:END -->
 
 ## How it works

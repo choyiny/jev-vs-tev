@@ -9,7 +9,7 @@ import httpx
 
 from bench.dataset import Item
 from bench.providers.base import Prediction
-from bench.providers.tev import CAREFUL
+from bench.providers.tev import CAREFUL, variant_item
 
 QUESTION_ID = "decision"
 
@@ -49,6 +49,7 @@ class JevProvider:
         self.headers = {"Authorization": f"Bearer {os.environ['AISPACE_API_KEY']}"}
 
     async def predict(self, client: httpx.AsyncClient, item: Item) -> Prediction:
+        item = variant_item(item, self.variant)
         t0 = time.perf_counter()
         resp = await client.post(self.url, json=build_body(item, self.model, self.variant), headers=self.headers)
         latency = (time.perf_counter() - t0) * 1000

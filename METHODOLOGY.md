@@ -16,15 +16,17 @@ All four models see the same text for every item: the same state, question, opti
 
 ## Prompt variants
 
-Prompt wording can change a classifier's accuracy, so we ran TEV and JEV with three prompt versions. Each change is applied the same way to both models:
+Prompt wording can change a classifier's accuracy, so we ran TEV and JEV with five prompt versions. Each change is applied the same way to both models:
 
 | Variant | TEV (system prompt + JSON) | JEV (`choice` question) |
 |---|---|---|
 | `default` | Together's recommended system prompt; options with key and description | `instructions` = the question; `criteria` = key → description |
 | `careful` | System prompt plus: *"Read the whole input before deciding. Pay close attention to negations, dates and numbers, stated exceptions, and who is speaking."* | The same sentence placed before the question in `instructions` |
 | `keys_only` | Options sent as label + key only, with no descriptions | `criteria` = key → the key written as words (`duplicate_charge` → "duplicate charge") |
+| `reversed` | Same options in reverse order (letters reassigned A, B, …) | `criteria` in reverse order |
+| `generic_question` | `question` replaced with "Which option best fits the input?" | `instructions` replaced with the same sentence |
 
-`careful` tests whether a line of guidance helps. `keys_only` tests how much each model depends on hand-written option descriptions.
+`careful` tests whether a line of guidance helps. `keys_only` tests how much each model depends on hand-written option descriptions. `reversed` tests sensitivity to option order. `generic_question` tests how much the task-specific question helps. Besides accuracy, we report how many answers change compared with the default prompt. A prompt can fix some items and break others while accuracy stays the same.
 
 ## Dataset: contrastive pairs
 

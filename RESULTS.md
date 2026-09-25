@@ -58,14 +58,16 @@ For reference, Claude Opus 5.5 (AI Space) scores 99.2% at 2477 ms p50, $0.001708
 | `default`: vendor-recommended prompt | 90.0% | – | 80.0% | 97.2% | – | 95.0% |
 | `careful`: + one line of reading guidance | 89.8% | -0.3 | 79.5% | 97.2% | +0.0 | 94.5% |
 | `keys_only`: option keys, no descriptions | 83.2% | -6.8 | 68.0% | 92.8% | -4.5 | 86.0% |
+| `reversed`: same options, reverse order | 90.8% | +0.7 | 81.5% | 97.2% | +0.0 | 94.5% |
+| `generic_question`: "Which option best fits the input?" | 89.5% | -0.5 | 79.5% | 97.0% | -0.3 | 94.0% |
 
 **What this experiment cost.** Every billed API call, including prompt variants, warm-ups and retries, priced at list rates. Pre-ledger calls that left no result row are estimated from average tokens per call.
 
 | Model | Billed calls | Input tokens | Output tokens | USD |
 |---|---:|---:|---:|---:|
-| TEV (Together) | 1,214 | 277,607 | 2,428 | $0.0117 (≈$0.0001 estimated) |
-| JEV (AI Space) | 1,237 | 566,033 | 71,543 | $0.0238 (≈$0.0007 estimated) |
+| TEV (Together) | 2,020 | 471,446 | 4,040 | $0.0198 (≈$0.0001 estimated) |
+| JEV (AI Space) | 2,043 | 938,528 | 118,074 | $0.0394 (≈$0.0007 estimated) |
 | GLM 5.3 (AI Space) | 405 | 97,071 | 43,670 | $0.3280 (≈$0.0042 estimated) |
 | Claude Opus 5.5 (AI Space) | 406 | 147,593 | 5,163 | $0.6936 (≈$0.0103 estimated) |
-| **Total** | 3,262 | 1,088,304 | 122,804 | **$1.06** |
+| **Total** | 4,874 | 1,654,638 | 170,947 | **$1.08** |
 
