@@ -5,7 +5,7 @@ import pytest
 
 from bench.dataset import Item, Option, validate
 from bench.providers import jev, tev
-from bench.report import END, START, Row, ece, mcnemar_exact, write_readme
+from bench.report import END, START, Row, ece, label_metrics, macro, mcnemar_exact, write_readme
 
 ITEM = Item(
     id="support_intent-001a",
@@ -110,6 +110,28 @@ def test_mcnemar_exact():
     assert mcnemar_exact(5, 5) == 1.0
     # 10 vs 0 discordant: p = 2 * 0.5**10
     assert mcnemar_exact(10, 0) == pytest.approx(2 / 1024)
+
+
+def test_label_metrics_precision_recall_and_macro():
+    from dataclasses import replace
+
+    cancel = replace(ITEM, id="support_intent-001b", gold="cancel_subscription")
+    other = replace(ITEM, id="ticket_triage-001a", category="ticket_triage", gold="none")
+    rows = [
+        Row(ITEM, "duplicate_charge", None, 1, 1, 1, "m"),       # tp duplicate_charge
+        Row(ITEM, "cancel_subscription", None, 1, 1, 1, "m"),    # fn duplicate_charge, fp cancel_subscription
+        Row(cancel, "cancel_subscription", None, 1, 1, 1, "m"),  # tp cancel_subscription
+        Row(cancel, None, None, 1, 1, 1, "m"),                   # unusable: fn only
+        Row(other, "none", None, 1, 1, 1, "m"),                  # other family, perfect
+    ]
+    m = label_metrics(rows)
+    dup, can = m[("support_intent", "duplicate_charge")], m[("support_intent", "cancel_subscription")]
+    assert (dup["precision"], dup["recall"], dup["support"]) == (1.0, 0.5, 2)
+    assert (can["precision"], can["recall"], can["predicted"]) == (0.5, 0.5, 2)
+    assert dup["f1"] == pytest.approx(2 / 3)
+    assert macro(m, "support_intent")["recall"] == pytest.approx(0.5)
+    # overall macro weights families equally, not labels
+    assert macro(m)["recall"] == pytest.approx((0.5 + 1.0) / 2)
 
 
 def test_ece_perfectly_calibrated_is_zero():

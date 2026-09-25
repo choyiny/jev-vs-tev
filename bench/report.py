@@ -130,6 +130,46 @@ def brier(rows: list[Row]) -> float | None:
     )
 
 
+def label_metrics(rows: list[Row]) -> dict[tuple[str, str], dict]:
+    """One-vs-rest precision, recall and F1 for every answer label, keyed by (task family, label).
+
+    Labels are scoped to their family, since the same key can mean different things in different families.
+    A label is included if it is the gold answer or the prediction for at least one item. Unusable output
+    counts as a miss (a false negative for the gold label, no false positive). Undefined precision or recall
+    (no predictions, or no gold items) is 0, as in scikit-learn's default.
+    """
+    counts: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0, 0])  # tp, fp, fn
+    for r in rows:
+        cat, gold = r.item.category, r.item.gold
+        if r.key == gold:
+            counts[(cat, gold)][0] += 1
+        else:
+            counts[(cat, gold)][2] += 1
+            if r.key is not None:
+                counts[(cat, r.key)][1] += 1
+    out = {}
+    for label, (tp, fp, fn) in counts.items():
+        p = tp / (tp + fp) if tp + fp else 0.0
+        rec = tp / (tp + fn) if tp + fn else 0.0
+        out[label] = {"support": tp + fn, "predicted": tp + fp, "precision": p, "recall": rec,
+                      "f1": 2 * p * rec / (p + rec) if p + rec else 0.0}
+    return out
+
+
+def macro(metrics: dict[tuple[str, str], dict], category: str | None = None) -> dict[str, float]:
+    """Unweighted mean of per-label precision, recall and F1, so rare labels count as much as common ones.
+
+    Without a category, it is the mean of the per-family macros, so each family counts equally. A plain mean
+    over all labels would be dominated by support_intent, which has 40 labels with 1–3 items each.
+    """
+    keys = ("precision", "recall", "f1")
+    if category is None:
+        fams = [macro(metrics, c) for c in sorted({c for c, _ in metrics})]
+        return {k: statistics.fmean(f[k] for f in fams) for k in keys}
+    ms = [m for (cat, _), m in metrics.items() if cat == category]
+    return {k: statistics.fmean(m[k] for m in ms) for k in keys}
+
+
 # ---------------------------------------------------------------- summary
 
 
@@ -147,6 +187,8 @@ def summarize(provider: str, rows: list[Row]) -> dict:
     cost_task = (
         statistics.fmean((r.input_tokens * pr[0] + r.output_tokens * pr[1]) / 1e6 for r in rows) if pr else None
     )
+    per_label = label_metrics(rows)
+    mac = macro(per_label)
     return {
         "provider": provider,
         "model": statistics.mode(r.model for r in rows),
@@ -154,6 +196,10 @@ def summarize(provider: str, rows: list[Row]) -> dict:
         "acc": sum(r.correct for r in rows) / n,
         "ci": pair_bootstrap_ci(rows),
         "pair_acc": sum(all(v) for v in full_pairs) / len(full_pairs) if full_pairs else float("nan"),
+        "labels": per_label,
+        "macro_p": mac["precision"],
+        "macro_r": mac["recall"],
+        "macro_f1": mac["f1"],
         "unusable": sum(r.key is None for r in rows) / n,
         "p50": pct(lat, 0.5),
         "p95": pct(lat, 0.95),
@@ -207,6 +253,7 @@ def render_summary(providers: list[str], items: list[Item]) -> str:
         ("Speed (p50)", lambda s: s["p50"], lambda v: f"{v:,.0f} ms", True),
         ("Accuracy", lambda s: s["acc"], fmt_pct, False),
         ("Both halves of a pair right", lambda s: s["pair_acc"], fmt_pct, False),
+        ("Macro F1 (every answer weighted equally)", lambda s: s["macro_f1"], fmt_pct, False),
     ]
     for name, metric, fmt, low in rows_spec:
         vals = [metric(summ[p]) for p in providers]
@@ -220,7 +267,8 @@ def render_summary(providers: list[str], items: list[Item]) -> str:
     t = spend.totals()
     cost = f" The whole experiment cost **${sum(r['usd'] for r in t.values()):.2f}** in API calls." if t else ""
     out.append(f"{len(common)} held-out items ({n_pairs} contrastive pairs, 8 task families).{cost} "
-               "Per-family scores, prompt variants, calibration and significance: [RESULTS.md](RESULTS.md).")
+               "Per-label precision and recall, per-family scores, prompt variants, calibration and significance: "
+               "[RESULTS.md](RESULTS.md).")
     return "\n".join(out)
 
 
@@ -268,6 +316,9 @@ def render(providers: list[str], items: list[Item]) -> str:
     best("Accuracy", lambda s: s["acc"], fmt_pct, False)
     line("Accuracy 95% CI", lambda s: f"{fmt_pct(s['ci'][0])}–{fmt_pct(s['ci'][1])}")
     best("Pair accuracy (both halves right)", lambda s: s["pair_acc"], fmt_pct, False)
+    best("Macro precision", lambda s: s["macro_p"], fmt_pct, False)
+    best("Macro recall", lambda s: s["macro_r"], fmt_pct, False)
+    best("Macro F1", lambda s: s["macro_f1"], fmt_pct, False)
     out.append("")
 
     out += ["**Details**", ""]
@@ -324,9 +375,48 @@ def render(providers: list[str], items: list[Item]) -> str:
             cells = [fmt_pct(sum(r.correct for r in rows[p] if r.item.difficulty == d) / n) for p in providers]
             out.append(f"| {d} | {n} | " + " | ".join(cells) + " |")
     out.append("")
+    out += per_label_section(providers, summ, cats)
     out += prompt_sensitivity(by_id, set(common))
     out += spend_section()
     return "\n".join(out)
+
+
+def per_label_section(providers: list[str], summ: dict, cats: list[str]) -> list[str]:
+    """Macro precision / recall / F1 per family, then every label's precision and recall."""
+    names = " | ".join(LABELS.get(p, p) for p in providers)
+    out = ["**Precision and recall by answer label**", "",
+           "Accuracy counts items, so it rewards getting the common answers right. Here every answer label is "
+           "scored on its own: *precision* is how often the model is right when it gives that answer, *recall* "
+           "is how often it gives that answer when it's the right one. The macro average weights every label "
+           "equally within its family, and the overall macro averages the families equally, so a model that "
+           "ignores rare answers scores lower.", ""]
+    out.append("| Task family | Labels | " + " | ".join(f"{LABELS.get(p, p)} P / R / F1" for p in providers) + " |")
+    out.append("|---|---:|" + "---:|" * len(providers))
+    for cat in cats:
+        n_labels = len({lab for p in providers for (c, lab) in summ[p]["labels"] if c == cat})
+        cells = []
+        for p in providers:
+            m = macro(summ[p]["labels"], cat)
+            cells.append(" / ".join(f"{100 * m[k]:.0f}" for k in ("precision", "recall", "f1")))
+        out.append(f"| `{cat}` | {n_labels} | " + " | ".join(cells) + " |")
+    out.append("")
+    out.append("Per label, as precision / recall (%). *n* is how many items have that label as the right answer; "
+               "a label with n = 0 was never right but some model picked it.")
+    out.append("")
+    for cat in cats:
+        labels = {lab for p in providers for (c, lab) in summ[p]["labels"] if c == cat}
+        support = {lab: max(summ[p]["labels"].get((cat, lab), {"support": 0})["support"] for p in providers)
+                   for lab in labels}
+        out += [f"<details><summary><code>{cat}</code> ({len(labels)} labels)</summary>", "",
+                f"| Label | n | {names} |", "|---|---:|" + "---:|" * len(providers)]
+        for lab in sorted(labels, key=lambda l: (-support[l], l)):
+            cells = []
+            for p in providers:
+                m = summ[p]["labels"].get((cat, lab))
+                cells.append("–" if m is None else f"{100 * m['precision']:.0f} / {100 * m['recall']:.0f}")
+            out.append(f"| `{lab}` | {support[lab]} | " + " | ".join(cells) + " |")
+        out += ["", "</details>", ""]
+    return out
 
 
 def spend_section() -> list[str]:

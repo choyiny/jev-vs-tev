@@ -51,6 +51,7 @@ Claude wrote all items for this benchmark. They are original text, not taken fro
 ## Metrics
 
 - **Accuracy, 95% CI**: bootstrap that resamples whole pairs, since the two halves of a pair aren't independent.
+- **Precision, recall, F1 per answer label**: each label (e.g. `auto_approve`) is scored one-vs-rest within its task family. Precision is how often the model is right when it gives that answer; recall is how often it gives that answer when it's right. Unusable output counts against the gold label's recall. **Macro** averages weight every label equally within a family, then every family equally overall, so a model can't score well by getting only the common answers right. Weighting families equally stops `support_intent`, with 40 mostly one-item labels, from swamping the average. Labels with only a few items give coarse numbers (a label with n = 1 is either 0% or 100%).
 - **Head to head**: exact McNemar test on the items where exactly one model is right.
 - **Unusable output**: replies that don't map to an option (TEV), or errors after 5 retries. These count as wrong.
 - **Speed**: client-side wall-clock time per request, p50 and p95. Both models run from the same machine, one after the other, 4 requests in flight, with 3 unrecorded warm-up calls. This includes network time to each provider, so it measures what a caller sees, not the model alone.
@@ -67,7 +68,7 @@ Claude wrote all items for this benchmark. They are original text, not taken fro
 
 - A language model wrote the data, and the same kind of model checked the labels. Labels were validated structurally and spot-checked. A careful human could still dispute an item or two.
 - Both models missed the same 7 items. We reviewed each one. Four are clearly labelled and both models simply got them wrong: a percentage calculation, two date-window rules, and a moderator report that quotes a threat. Three could be argued: `review_sentiment-021a`, `ticket_triage-022b` and `claim_support-006b`. We kept all labels as written. Because both models missed these items, they don't affect the gap between them.
-- Labels aren't balanced within every family. In `claim_support`, `content_moderation` and `action_review`, always picking the most common answer scores about 50%. The per-family table shows this majority baseline next to each model.
+- Labels aren't balanced within every family. In `claim_support`, `content_moderation` and `action_review`, always picking the most common answer scores about 50%. The per-family table shows this majority baseline next to each model, and macro precision / recall / F1 weight every answer label equally so the common answers don't carry the score.
 - The dataset is small (400 items), so category-level numbers have wide intervals. Rely on the headline CI and the McNemar p-value.
 - Latency depends on region and provider load at run time. JEV is reached through the AI Space gateway, so its latency includes that extra hop. TEV is called on Together directly.
 - The two APIs count tokens differently. For the same text, JEV bills about twice as many input tokens as TEV, probably because TypeSafe adds its own prompt around the input. Cost per task already includes this difference.

@@ -15,8 +15,9 @@
 | Speed (p50) | **173 ms** | 459 ms | 2,879 ms | 2,477 ms |
 | Accuracy | 90.0% | 97.2% | 99.0% | **99.2%** |
 | Both halves of a pair right | 80.0% | 95.0% | 98.0% | **98.5%** |
+| Macro F1 (every answer weighted equally) | 88.5% | 95.5% | 98.0% | **99.4%** |
 
-400 held-out items (200 contrastive pairs, 8 task families). The whole experiment cost **$1.08** in API calls. Per-family scores, prompt variants, calibration and significance: [RESULTS.md](RESULTS.md).
+400 held-out items (200 contrastive pairs, 8 task families). The whole experiment cost **$1.08** in API calls. Per-label precision and recall, per-family scores, prompt variants, calibration and significance: [RESULTS.md](RESULTS.md).
 <!-- RESULTS:END -->
 
 ![Median latency per call: TEV 173 ms, JEV 459 ms, Opus 5.5 2,477 ms, GLM 5.3 2,879 ms](docs/img/speed.png)
