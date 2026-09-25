@@ -123,3 +123,36 @@ def test_write_readme_replaces_between_markers(tmp_path):
     readme.write_text(f"# T\n{START}\nold\n{END}\ntail\n")
     write_readme("new table", readme)
     assert readme.read_text() == f"# T\n{START}\nnew table\n{END}\ntail\n"
+
+
+# ---- prompt variants
+
+
+def test_tev_variants():
+    careful = tev.build_body(ITEM, "m", 0, "careful")
+    assert careful["messages"][0]["content"].endswith(tev.CAREFUL)
+    bare = json.loads(tev.build_body(ITEM, "m", 0, "keys_only")["messages"][1]["content"])
+    assert bare["options"][0] == {"label": "A", "key": "duplicate_charge"}
+    default = tev.build_body(ITEM, "m", 0)
+    assert default["messages"][0]["content"] == tev.SYSTEM_PROMPT
+
+
+def test_jev_variants():
+    q = jev.build_body(ITEM, "m", "careful")["questions"][jev.QUESTION_ID]
+    assert q["instructions"] == f"{tev.CAREFUL} {ITEM.question}"
+    q = jev.build_body(ITEM, "m", "keys_only")["questions"][jev.QUESTION_ID]
+    assert q["criteria"]["duplicate_charge"] == "duplicate charge"
+
+
+def test_get_provider_specs(monkeypatch):
+    from bench.providers import get_provider
+
+    monkeypatch.setenv("TOGETHER_API_KEY", "x")
+    monkeypatch.setenv("AISPACE_API_KEY", "x")
+    assert get_provider("tev.careful").name == "tev.careful"
+    assert get_provider("jev").name == "jev"
+    assert get_provider("opus").model == "claude-opus-5.5"
+    with pytest.raises(ValueError):
+        get_provider("tev.shouty")
+    with pytest.raises(ValueError):
+        get_provider("glm.careful")

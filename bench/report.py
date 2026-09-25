@@ -21,7 +21,19 @@ from bench.dataset import Item, load_items
 from bench.run import RESULTS_DIR, ROOT, load_env
 
 START, END = "<!-- RESULTS:START -->", "<!-- RESULTS:END -->"
-LABELS = {"tev": "TEV (Together)", "jev": "JEV (AI Space)", "oracle": "oracle"}
+LABELS = {
+    "tev": "TEV (Together)",
+    "jev": "JEV (AI Space)",
+    "glm": "GLM 5.3 (AI Space)",
+    "opus": "Claude Opus 5.5 (AI Space)",
+    "oracle": "oracle",
+}
+DEFAULT_PROVIDERS = ["tev", "jev", "glm", "opus"]
+VARIANT_LABELS = {
+    "default": "`default`: vendor-recommended prompt",
+    "careful": "`careful`: + one line of reading guidance",
+    "keys_only": "`keys_only`: option keys, no descriptions",
+}
 
 
 @dataclass
@@ -116,8 +128,9 @@ def brier(rows: list[Row]) -> float | None:
 
 
 def price(provider: str) -> tuple[float, float] | None:
-    p_in = os.environ.get(f"{provider.upper()}_PRICE_IN")
-    p_out = os.environ.get(f"{provider.upper()}_PRICE_OUT") or "0"
+    base = provider.split(".")[0].upper()  # prompt variants share their model's price
+    p_in = os.environ.get(f"{base}_PRICE_IN")
+    p_out = os.environ.get(f"{base}_PRICE_OUT") or "0"
     if not p_in:
         return None
     return float(p_in), float(p_out)
@@ -202,6 +215,12 @@ def render(providers: list[str], items: list[Item]) -> str:
 
     if len(providers) >= 2:
         out += [verdict(summ[providers[0]], summ[providers[1]]), ""]
+    for p in providers[2:]:
+        s_ = summ[p]
+        cost = "" if s_["cost_task"] is None else f", ${s_['cost_task']:.7f} per task"
+        out.append(f"For reference, {LABELS.get(p, p)} scores {fmt_pct(s_['acc'])} at {s_['p50']:.0f} ms p50{cost}.")
+    if len(providers) > 2:
+        out.append("")
 
     def best(name: str, metric, fmt, lower_is_better: bool) -> None:
         """A row where the winning value is bolded."""
@@ -277,7 +296,43 @@ def render(providers: list[str], items: list[Item]) -> str:
             cells = [fmt_pct(sum(r.correct for r in rows[p] if r.item.difficulty == d) / n) for p in providers]
             out.append(f"| {d} | {n} | " + " | ".join(cells) + " |")
     out.append("")
+    out += prompt_sensitivity(by_id, set(common))
     return "\n".join(out)
+
+
+def prompt_sensitivity(by_id: dict[str, Item], common: set[str]) -> list[str]:
+    """Accuracy of TEV and JEV under each prompt variant, on the same items as the main table."""
+    from bench.providers.tev import VARIANTS
+
+    bases = [b for b in ("tev", "jev") if (RESULTS_DIR / f"{b}.jsonl").exists()]
+    specs = {(b, v): b if v == "default" else f"{b}.{v}" for b in bases for v in VARIANTS}
+    specs = {k: s for k, s in specs.items() if (RESULTS_DIR / f"{s}.jsonl").exists()}
+    if len({v for _, v in specs}) < 2:
+        return []
+    summ = {}
+    for (b, v), spec in specs.items():
+        rows = load_rows(spec, by_id)
+        rows = [rows[i] for i in sorted(common) if i in rows]
+        if len(rows) == len(common):
+            summ[(b, v)] = summarize(spec, rows)
+
+    out = ["**Prompt sensitivity.** The same 400 items run with three prompt versions for TEV and JEV. "
+           "Δ is the accuracy change from each model's default prompt.", ""]
+    cols = [f"{LABELS[b]} {m}" for b in bases for m in ("accuracy", "Δ", "pair accuracy")]
+    out.append("| Prompt | " + " | ".join(cols) + " |")
+    out.append("|---|" + "---:|" * len(cols))
+    for v in VARIANTS:
+        cells = []
+        for b in bases:
+            s_, d_ = summ.get((b, v)), summ.get((b, "default"))
+            if not s_:
+                cells += ["n/a"] * 3
+                continue
+            delta = "–" if v == "default" or not d_ else f"{100 * (s_['acc'] - d_['acc']):+.1f}"
+            cells += [fmt_pct(s_["acc"]), delta, fmt_pct(s_["pair_acc"])]
+        out.append(f"| {VARIANT_LABELS[v]} | " + " | ".join(cells) + " |")
+    out.append("")
+    return out
 
 
 def write_readme(section: str, readme: Path = ROOT / "README.md") -> None:
@@ -291,11 +346,12 @@ def write_readme(section: str, readme: Path = ROOT / "README.md") -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--provider", nargs="+", default=["tev", "jev"])
+    ap.add_argument("--provider", nargs="+", help=f"columns to compare (default: {' '.join(DEFAULT_PROVIDERS)})")
     ap.add_argument("--stdout", action="store_true")
     args = ap.parse_args()
     load_env()
-    section = render(args.provider, load_items())
+    providers = args.provider or [p for p in DEFAULT_PROVIDERS if (RESULTS_DIR / f"{p}.jsonl").exists()]
+    section = render(providers, load_items())
     if args.stdout:
         print(section)
     else:

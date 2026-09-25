@@ -25,30 +25,47 @@ SYSTEM_PROMPT = (
     "Select exactly one listed option. Return only its letter, with no explanation."
 )
 LETTERS = string.ascii_uppercase
+CAREFUL = (
+    "Read the whole input before deciding. Pay close attention to negations, dates and numbers, "
+    "stated exceptions, and who is speaking."
+)
+# Prompt variants, applied the same way to Jev (see jev.py):
+#   default   - the vendor-recommended prompt
+#   careful   - default plus one line of reading guidance
+#   keys_only - options as bare keys, no descriptions
+VARIANTS = ("default", "careful", "keys_only")
 
 
-def build_user_message(item: Item) -> str:
+def build_user_message(item: Item, variant: str = "default") -> str:
+    def option(i: int, o) -> dict:
+        d = {"label": LETTERS[i], "key": o.key}
+        if variant != "keys_only":
+            d["description"] = o.description
+        return d
+
     return json.dumps(
         {
             "state": item.state,
             "question": item.question,
-            "options": [
-                {"label": LETTERS[i], "key": o.key, "description": o.description}
-                for i, o in enumerate(item.options)
-            ],
+            "options": [option(i, o) for i, o in enumerate(item.options)],
         },
         ensure_ascii=False,
         separators=(",", ":"),
     )
 
 
-def build_body(item: Item, model: str, logprobs: int) -> dict:
+def build_messages(item: Item, variant: str = "default") -> list[dict]:
+    system = f"{SYSTEM_PROMPT} {CAREFUL}" if variant == "careful" else SYSTEM_PROMPT
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": build_user_message(item, variant)},
+    ]
+
+
+def build_body(item: Item, model: str, logprobs: int, variant: str = "default") -> dict:
     body = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_message(item)},
-        ],
+        "messages": build_messages(item, variant),
         "temperature": 0,
         "max_tokens": 8,
         "chat_template_kwargs": {"enable_thinking": False},
@@ -111,16 +128,16 @@ def letter_probs(item: Item, top: dict[str, float] | None) -> dict[str, float] |
 
 
 class TevProvider:
-    name = "tev"
-
-    def __init__(self) -> None:
+    def __init__(self, variant: str = "default") -> None:
+        self.variant = variant
+        self.name = "tev" if variant == "default" else f"tev.{variant}"
         self.model = os.environ.get("TEV_MODEL", "together/Tev1-4B-experimental")
         self.logprobs = int(os.environ.get("TEV_LOGPROBS", "5"))
         self.headers = {"Authorization": f"Bearer {os.environ['TOGETHER_API_KEY']}"}
 
     async def predict(self, client: httpx.AsyncClient, item: Item) -> Prediction:
         t0 = time.perf_counter()
-        resp = await client.post(URL, json=build_body(item, self.model, self.logprobs), headers=self.headers)
+        resp = await client.post(URL, json=build_body(item, self.model, self.logprobs, self.variant), headers=self.headers)
         latency = (time.perf_counter() - t0) * 1000
         if resp.status_code == 400 and self.logprobs and "logprob" in resp.text.lower():
             # Endpoint doesn't support logprobs: drop them for the rest of the run and retry.

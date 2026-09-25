@@ -9,21 +9,21 @@ import httpx
 
 from bench.dataset import Item
 from bench.providers.base import Prediction
+from bench.providers.tev import CAREFUL
 
 QUESTION_ID = "decision"
 
 
-def build_body(item: Item, model: str) -> dict:
+def build_body(item: Item, model: str, variant: str = "default") -> dict:
+    instructions = f"{CAREFUL} {item.question}" if variant == "careful" else item.question
+    if variant == "keys_only":
+        criteria = {o.key: o.key.replace("_", " ") for o in item.options}
+    else:
+        criteria = {o.key: o.description for o in item.options}
     return {
         "model": model,
         "state": item.state,
-        "questions": {
-            QUESTION_ID: {
-                "type": "choice",
-                "instructions": item.question,
-                "criteria": {o.key: o.description for o in item.options},
-            }
-        },
+        "questions": {QUESTION_ID: {"type": "choice", "instructions": instructions, "criteria": criteria}},
     }
 
 
@@ -41,16 +41,16 @@ def parse_response(item: Item, data: dict) -> tuple[str | None, dict[str, float]
 
 
 class JevProvider:
-    name = "jev"
-
-    def __init__(self) -> None:
+    def __init__(self, variant: str = "default") -> None:
+        self.variant = variant
+        self.name = "jev" if variant == "default" else f"jev.{variant}"
         self.model = os.environ.get("JEV_MODEL", "jev-latest")
         self.url = os.environ.get("JEV_BASE_URL", "https://ai.xyspace.dev/v1").rstrip("/") + "/systemone"
         self.headers = {"Authorization": f"Bearer {os.environ['AISPACE_API_KEY']}"}
 
     async def predict(self, client: httpx.AsyncClient, item: Item) -> Prediction:
         t0 = time.perf_counter()
-        resp = await client.post(self.url, json=build_body(item, self.model), headers=self.headers)
+        resp = await client.post(self.url, json=build_body(item, self.model, self.variant), headers=self.headers)
         latency = (time.perf_counter() - t0) * 1000
         resp.raise_for_status()
         data = resp.json()

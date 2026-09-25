@@ -3,6 +3,7 @@
     uv run python -m bench.run --provider tev jev
     uv run python -m bench.run --provider jev --limit 20      # quick check
     uv run python -m bench.run --provider tev --fresh          # discard previous results
+    uv run python -m bench.run --provider tev.careful jev.keys_only glm opus
 
 Runs are resumable: items that already have a successful prediction are skipped.
 """
@@ -110,7 +111,8 @@ async def run_provider(name: str, items: list[Item], concurrency: int, warmup: i
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--provider", nargs="+", default=["tev", "jev"], choices=["tev", "jev", "oracle"])
+    ap.add_argument("--provider", nargs="+", default=["tev", "jev"],
+                    help="tev, jev, glm, opus, oracle; prompt variants as tev.careful, jev.keys_only, ...")
     ap.add_argument("--category", nargs="*", help="limit to these categories")
     ap.add_argument("--limit", type=int, help="only the first N items (whole pairs)")
     ap.add_argument("--concurrency", type=int, default=4)
