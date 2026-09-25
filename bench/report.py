@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from bench import spend
 from bench.dataset import Item, load_items
 from bench.run import RESULTS_DIR, ROOT, load_env
 
@@ -127,15 +128,6 @@ def brier(rows: list[Row]) -> float | None:
     )
 
 
-def price(provider: str) -> tuple[float, float] | None:
-    base = provider.split(".")[0].upper()  # prompt variants share their model's price
-    p_in = os.environ.get(f"{base}_PRICE_IN")
-    p_out = os.environ.get(f"{base}_PRICE_OUT") or "0"
-    if not p_in:
-        return None
-    return float(p_in), float(p_out)
-
-
 # ---------------------------------------------------------------- summary
 
 
@@ -148,7 +140,7 @@ def summarize(provider: str, rows: list[Row]) -> dict:
     lat = [r.latency_ms for r in rows if r.key]
     avg_in = statistics.fmean(r.input_tokens for r in rows)
     avg_out = statistics.fmean(r.output_tokens for r in rows)
-    pr = price(provider)
+    pr = spend.price(provider)
     # Cost per task: each call's billed tokens at list price, averaged over tasks.
     cost_task = (
         statistics.fmean((r.input_tokens * pr[0] + r.output_tokens * pr[1]) / 1e6 for r in rows) if pr else None
@@ -192,17 +184,51 @@ def verdict(a: dict, b: dict) -> str:
     return "; ".join(parts) + "."
 
 
-def render(providers: list[str], items: list[Item]) -> str:
+def prepare(providers: list[str], items: list[Item]):
     by_id = {it.id: it for it in items}
     all_rows = {p: load_rows(p, by_id) for p in providers}
     # Score only items every provider answered (or failed on) so the comparison is like for like.
     common = sorted(set.intersection(*(set(r) for r in all_rows.values())))
     rows = {p: [all_rows[p][i] for i in common] for p in providers}
     summ = {p: summarize(p, rows[p]) for p in providers}
+    return by_id, common, rows, summ
+
+
+def render_summary(providers: list[str], items: list[Item]) -> str:
+    """The short results block for README.md; everything else goes to RESULTS.md."""
+    by_id, common, rows, summ = prepare(providers, items)
+    out = [verdict(summ[providers[0]], summ[providers[1]]), ""] if len(providers) >= 2 else []
+    out.append("| | " + " | ".join(LABELS.get(p, p) for p in providers) + " |")
+    out.append("|---|" + "---:|" * len(providers))
+    rows_spec = [
+        ("Cost per task", lambda s: s["cost_task"], lambda v: f"${v:.7f}", True),
+        ("Speed (p50)", lambda s: s["p50"], lambda v: f"{v:,.0f} ms", True),
+        ("Accuracy", lambda s: s["acc"], fmt_pct, False),
+        ("Both halves of a pair right", lambda s: s["pair_acc"], fmt_pct, False),
+    ]
+    for name, metric, fmt, low in rows_spec:
+        vals = [metric(summ[p]) for p in providers]
+        known = [v for v in vals if v is not None]
+        win = (min if low else max)(known)
+        out.append(f"| {name} | " + " | ".join(
+            "n/a" if v is None else (f"**{fmt(v)}**" if v == win and known.count(win) == 1 else fmt(v)) for v in vals
+        ) + " |")
+    out.append("")
+    n_pairs = len({by_id[i].pair_id for i in common})
+    t = spend.totals()
+    cost = f" The whole experiment cost **${sum(r['usd'] for r in t.values()):.2f}** in API calls." if t else ""
+    out.append(f"{len(common)} held-out items ({n_pairs} contrastive pairs, 8 task families).{cost} "
+               "Per-family scores, prompt variants, calibration and significance: [RESULTS.md](RESULTS.md).")
+    return "\n".join(out)
+
+
+def render(providers: list[str], items: list[Item]) -> str:
+    by_id, common, rows, summ = prepare(providers, items)
     cats = sorted({by_id[i].category for i in common})
     n_pairs = len({by_id[i].pair_id for i in common})
 
-    out: list[str] = []
+    out: list[str] = ["# Results", "", "Full numbers for the [JEV vs TEV benchmark](README.md). "
+                      "How they're measured: [METHODOLOGY.md](METHODOLOGY.md).", ""]
     out.append(f"_Run on {date.today().isoformat()} · {len(common)} items / {n_pairs} contrastive pairs · "
                f"{len(cats)} task families._\n")
 
@@ -297,7 +323,29 @@ def render(providers: list[str], items: list[Item]) -> str:
             out.append(f"| {d} | {n} | " + " | ".join(cells) + " |")
     out.append("")
     out += prompt_sensitivity(by_id, set(common))
+    out += spend_section()
     return "\n".join(out)
+
+
+def spend_section() -> list[str]:
+    """What the whole experiment cost, from results/spend.jsonl."""
+    t = spend.totals()
+    if not t:
+        return []
+    order = [p for p in ("tev", "jev", "glm", "opus") if p in t] + sorted(set(t) - {"tev", "jev", "glm", "opus"})
+    out = ["**What this experiment cost.** Every billed API call, including prompt variants, warm-ups and retries, "
+           "priced at list rates. Pre-ledger calls that left no result row are estimated from average tokens per call.", ""]
+    out += ["| Model | Billed calls | Input tokens | Output tokens | USD |", "|---|---:|---:|---:|---:|"]
+    for p in order:
+        r = t[p]
+        est = f" (≈${r['usd_estimated']:.4f} estimated)" if r["usd_estimated"] else ""
+        out.append(f"| {LABELS.get(p, p)} | {r['calls']:,} | {r['input_tokens']:,} | {r['output_tokens']:,} | "
+                   f"${r['usd']:.4f}{est} |")
+    out.append(f"| **Total** | {sum(r['calls'] for r in t.values()):,} | "
+               f"{sum(r['input_tokens'] for r in t.values()):,} | {sum(r['output_tokens'] for r in t.values()):,} | "
+               f"**${sum(r['usd'] for r in t.values()):.2f}** |")
+    out.append("")
+    return out
 
 
 def prompt_sensitivity(by_id: dict[str, Item], common: set[str]) -> list[str]:
@@ -351,12 +399,14 @@ def main() -> None:
     args = ap.parse_args()
     load_env()
     providers = args.provider or [p for p in DEFAULT_PROVIDERS if (RESULTS_DIR / f"{p}.jsonl").exists()]
-    section = render(providers, load_items())
+    items = load_items()
+    full, short = render(providers, items), render_summary(providers, items)
     if args.stdout:
-        print(section)
+        print(short, "\n\n---\n", full, sep="\n")
     else:
-        write_readme(section)
-        print("README.md results section updated")
+        (ROOT / "RESULTS.md").write_text(full + "\n")
+        write_readme(short)
+        print("README.md summary and RESULTS.md updated")
 
 
 if __name__ == "__main__":

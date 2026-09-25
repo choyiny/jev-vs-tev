@@ -22,6 +22,7 @@ from pathlib import Path
 import httpx
 
 from bench.dataset import Item, load_items, validate
+from bench import spend
 from bench.providers import Prediction, get_provider
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -90,7 +91,8 @@ async def run_provider(name: str, items: list[Item], concurrency: int, warmup: i
     async with httpx.AsyncClient(timeout=60, limits=limits) as client:
         # Warm the connection so TLS setup and cold starts don't land in the latency numbers.
         for it in todo[:warmup]:
-            await predict_with_retry(provider, client, it)
+            w = await predict_with_retry(provider, client, it)
+            spend.record(name, w.model, w.input_tokens, w.output_tokens, "warmup", it.id)
 
         with out.open("a") as f:
 
@@ -98,6 +100,7 @@ async def run_provider(name: str, items: list[Item], concurrency: int, warmup: i
                 nonlocal n_done, n_err
                 async with sem:
                     pred = await predict_with_retry(provider, client, it)
+                spend.record(name, pred.model, pred.input_tokens, pred.output_tokens, "task", it.id)
                 f.write(json.dumps(pred.to_json()) + "\n")
                 f.flush()
                 n_done += 1
