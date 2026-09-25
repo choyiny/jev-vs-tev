@@ -2,6 +2,25 @@
 
 [Jev](https://flaviocopes.com/jev/) is TypeSafe's closed-source decision model. Together AI [trained a Jev-style model for $17](https://www.together.ai/blog/how-to-train-your-own-jev), `Tev1-4B-experimental` ([announcement](https://www.linkedin.com/feed/update/urn:li:activity:7508652815490105344)), but published no accuracy numbers. We tested it: same 400 new tasks for both models, with two frontier LLMs alongside for reference.
 
+## Recommendation
+
+<!-- ROUTING:START -->
+**Use JEV for every task, and re-ask GLM 5.3 only for the few answers JEV tends to get wrong.** On tasks held out from tuning, this scores 98.1% against GLM 5.3's 99.0%, and costs 89% less: $86 per million tasks instead of $810.
+
+| Setup | Accuracy | Sent to GLM 5.3 | Cost per 1M tasks | vs GLM 5.3 only | Latency p50 |
+|---|---:|---:|---:|---:|---:|
+| JEV only | 97.2% | 0% | $20 | 41× cheaper | 459 ms |
+| **Hybrid (recommended)** | **98.1%** | 8% | **$86** | **9.4× cheaper** | 478 ms |
+| Hybrid, escalate every answer JEV has missed | 98.5% | 18% | $161 | 5.0× cheaper | – |
+| GLM 5.3 only | 99.0% | 100% | $810 | – | 2,879 ms |
+
+**The rule.** JEV answers first. If its answer is one of these 3, send the same prompt to GLM 5.3 and use GLM 5.3's answer: `respond_directly` (67%), `approve_store_credit` (75%), `approve_full_refund` (88%). The percentage is JEV's precision on that answer, i.e. how often it's right when it gives it. An answer is on the list when precision < 90% and GLM 5.3 does better on the labelled tasks. Routing only looks at JEV's answer, so it works at run time.
+
+**How it was chosen.** We tried 20 hybrids: TEV or JEV first, risk thresholds from 80% to 100%, with or without requiring GLM 5.3 to do better on that answer. Each was scored on pairs it wasn't tuned on (5-fold cross-validation). The recommended one is the cheapest within 1 point of GLM 5.3 only. With TEV first, the best hybrid reaches 97.1% while sending 39% of tasks to GLM 5.3: TEV's mistakes are spread over too many answers. Full sweep: [RESULTS.md](RESULTS.md#hybrid-routing-cheapest-setup-close-to-glm-53).
+
+The list is specific to these task families. For your own tasks, label a few hundred examples, run both models on them, and derive your own list the same way.
+<!-- ROUTING:END -->
+
 ## The task
 
 Every task is one multiple-choice decision. The model gets an input, a question, and 3–6 options, each a key plus a one-line description. It must return one key. Tasks come in pairs whose inputs differ by one small edit that flips the right answer:

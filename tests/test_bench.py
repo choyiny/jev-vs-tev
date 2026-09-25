@@ -189,3 +189,29 @@ def test_reversed_and_generic_variants_keep_scoring_intact():
     assert list(jev.build_body(rev, "m")["questions"][jev.QUESTION_ID]["criteria"])[0] == "none"
     gen = tev.variant_item(ITEM, "generic_question")
     assert gen.question == tev.GENERIC_QUESTION and gen.state == ITEM.state
+
+
+def test_routing_escalates_only_risky_answers_and_pays_for_both():
+    from dataclasses import replace
+
+    from bench.route import cascade, risky_labels
+
+    cancel = replace(ITEM, id="support_intent-001b", gold="cancel_subscription")
+    other = replace(ITEM, id="support_intent-002a", pair_id="support_intent-002")
+    base = [
+        Row(ITEM, "duplicate_charge", None, 100, 1, 1, "cheap"),      # right, but duplicate_charge precision is 50%
+        Row(cancel, "duplicate_charge", None, 100, 1, 1, "cheap"),    # wrong
+        Row(other, "cancel_subscription", None, 100, 1, 1, "cheap"),  # wrong: cancel_subscription precision 0%
+    ]
+    strong = [Row(r.item, r.item.gold, None, 1000, 1, 1, "strong") for r in base]
+    risky = risky_labels(base, 0.95)
+    assert set(risky) == {("support_intent", "duplicate_charge"), ("support_intent", "cancel_subscription")}
+    out = cascade(base, strong, risky, base_cost=1.0, strong_cost=10.0)
+    assert out["acc"] == 1.0 and out["escalated"] == 1.0
+    assert out["cost_task"] == pytest.approx(11.0)
+    assert out["p50"] == pytest.approx(1100)
+    assert cascade(base, strong, {}, 1.0, 10.0)["acc"] == pytest.approx(1 / 3)
+    # "strong must help": drop a risky label when the strong model is no better on those tasks
+    strong_wrong = [Row(r.item, "none", None, 1000, 1, 1, "strong") for r in base]
+    assert risky_labels(base, 0.95, strong_wrong) == {}
+    assert set(risky_labels(base, 0.95, strong)) == set(risky)

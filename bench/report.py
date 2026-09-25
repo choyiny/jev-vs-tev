@@ -22,6 +22,8 @@ from bench.dataset import Item, load_items
 from bench.run import RESULTS_DIR, ROOT, load_env
 
 START, END = "<!-- RESULTS:START -->", "<!-- RESULTS:END -->"
+ROUTE_START, ROUTE_END = "<!-- ROUTING:START -->", "<!-- ROUTING:END -->"
+STRONG = "glm"  # the model risky answers are re-asked to
 LABELS = {
     "tev": "TEV (Together)",
     "jev": "JEV (AI Space)",
@@ -376,6 +378,7 @@ def render(providers: list[str], items: list[Item]) -> str:
             out.append(f"| {d} | {n} | " + " | ".join(cells) + " |")
     out.append("")
     out += per_label_section(providers, summ, cats)
+    out += routing_section(providers, rows, summ)
     out += prompt_sensitivity(by_id, set(common))
     out += spend_section()
     return "\n".join(out)
@@ -652,13 +655,145 @@ def prompt_sensitivity(by_id: dict[str, Item], common: set[str]) -> list[str]:
     return out
 
 
-def write_readme(section: str, readme: Path = ROOT / "README.md") -> None:
+def routing(providers: list[str], rows: dict, summ: dict) -> dict:
+    """Sweep hybrid setups (first-pass model × risk threshold × rule) and pick the recommended one.
+
+    Returns {"configs": [...], "best": config} where each config has held-out accuracy, escalation rate and
+    cost, and the recommended one is the cheapest whose held-out accuracy is within TARGET_GAP of STRONG.
+    """
+    from bench import route
+
+    if STRONG not in providers:
+        return {}
+    g = summ[STRONG]
+    configs = []
+    for base in ("tev", "jev"):
+        if base not in providers:
+            continue
+        for better in (False, True):
+            for th in route.THRESHOLDS:
+                ho = route.held_out(rows[base], rows[STRONG], th, better)
+                configs.append({"base": base, "threshold": th, "only_if_better": better, **ho,
+                                "cost_task": summ[base]["cost_task"] + ho["escalated"] * g["cost_task"]})
+    ok = [c for c in configs if c["acc"] >= g["acc"] - route.TARGET_GAP]
+    best = min(ok, key=lambda c: c["cost_task"]) if ok else max(configs, key=lambda c: c["acc"])
+    best["risky"] = route.risky_labels(rows[best["base"]], best["threshold"],
+                                       rows[STRONG] if best["only_if_better"] else None)
+    best["in_sample"] = route.cascade(rows[best["base"]], rows[STRONG], best["risky"],
+                                      summ[best["base"]]["cost_task"], g["cost_task"])
+    return {"configs": configs, "best": best}
+
+
+def short(p: str) -> str:
+    return LABELS.get(p, p).split(" (")[0]
+
+
+def rule_text(c: dict) -> str:
+    return (f"precision < {100 * c['threshold']:.0f}%" + (f" and {short(STRONG)} does better" if c["only_if_better"] else ""))
+
+
+def render_recommendation(providers: list[str], items: list[Item]) -> str:
+    """README block: the cheapest hybrid that stays close to STRONG's accuracy, against STRONG alone."""
+    from bench.route import TARGET_GAP
+
+    _, _, rows, summ = prepare(providers, items)
+    rt = routing(providers, rows, summ)
+    if not rt:
+        return "_Routing needs results for GLM 5.3._"
+    c = rt["best"]
+    base, b, g = c["base"], summ[c["base"]], summ[STRONG]
+    B, S = short(base), short(STRONG)
+    risky = sorted(c["risky"].items(), key=lambda kv: kv[1]["precision"])
+    labels = ", ".join(f"`{lab}` ({100 * m['precision']:.0f}%)" for (_, lab), m in risky)
+    top = max((x for x in rt["configs"] if x["base"] == base and x["only_if_better"] == c["only_if_better"]),
+              key=lambda x: (x["acc"], -x["cost_task"]))
+    saved = 1 - c["cost_task"] / g["cost_task"]
+    tev = [x for x in rt["configs"] if x["base"] == "tev"]
+    tev_note = ""
+    if base != "tev" and tev:
+        tb = max(tev, key=lambda x: x["acc"])
+        tev_note = (f"With TEV first, the best hybrid reaches {fmt_pct(tb['acc'])} while sending "
+                    f"{100 * tb['escalated']:.0f}% of tasks to {S}: TEV's mistakes are spread over too many answers. ")
+
+    out = [f"**Use {B} for every task, and re-ask {S} only for the few answers {B} tends to get wrong.** "
+           f"On tasks held out from tuning, this scores {fmt_pct(c['acc'])} against {S}'s {fmt_pct(g['acc'])}, "
+           f"and costs {100 * saved:.0f}% less: ${c['cost_task'] * 1e6:,.0f} per million tasks instead of "
+           f"${g['cost_task'] * 1e6:,.0f}.", ""]
+    out += [f"| Setup | Accuracy | Sent to {S} | Cost per 1M tasks | vs {S} only | Latency p50 |",
+            "|---|---:|---:|---:|---:|---:|",
+            f"| {B} only | {fmt_pct(b['acc'])} | 0% | ${b['cost_task'] * 1e6:,.0f} | "
+            f"{g['cost_task'] / b['cost_task']:.0f}× cheaper | {b['p50']:,.0f} ms |",
+            f"| **Hybrid (recommended)** | **{fmt_pct(c['acc'])}** | {100 * c['escalated']:.0f}% | "
+            f"**${c['cost_task'] * 1e6:,.0f}** | **{g['cost_task'] / c['cost_task']:.1f}× cheaper** | "
+            f"{c['in_sample']['p50']:,.0f} ms |"]
+    if top is not c:
+        out.append(f"| Hybrid, escalate every answer {B} has missed | {fmt_pct(top['acc'])} | "
+                   f"{100 * top['escalated']:.0f}% | ${top['cost_task'] * 1e6:,.0f} | "
+                   f"{g['cost_task'] / top['cost_task']:.1f}× cheaper | – |")
+    out += [f"| {S} only | {fmt_pct(g['acc'])} | 100% | ${g['cost_task'] * 1e6:,.0f} | – | {g['p50']:,.0f} ms |", ""]
+    out.append(f"**The rule.** {B} answers first. If its answer is one of these {len(risky)}, send the same prompt "
+               f"to {S} and use {S}'s answer: {labels}. The percentage is {B}'s precision on that answer, i.e. how "
+               f"often it's right when it gives it. An answer is on the list when {rule_text(c)} on the labelled "
+               f"tasks. Routing only looks at {B}'s answer, so it works at run time.")
+    out += ["", f"**How it was chosen.** We tried {len(rt['configs'])} hybrids: TEV or JEV first, risk thresholds "
+                f"from 80% to 100%, with or without requiring {S} to do better on that answer. Each was scored on "
+                f"pairs it wasn't tuned on (5-fold cross-validation). The recommended one is the cheapest within "
+                f"{100 * TARGET_GAP:.0f} point of {S} only. " + tev_note +
+                f"Full sweep: [RESULTS.md](RESULTS.md#hybrid-routing-cheapest-setup-close-to-glm-53)."]
+    out += ["", "The list is specific to these task families. For your own tasks, label a few hundred examples, "
+                "run both models on them, and derive your own list the same way."]
+    return "\n".join(out)
+
+
+def routing_section(providers: list[str], rows: dict, summ: dict) -> list[str]:
+    """RESULTS.md: the whole hybrid sweep, and the recommended setup's risky answers."""
+    from bench.route import FOLDS, SEEDS, TARGET_GAP
+
+    rt = routing(providers, rows, summ)
+    if not rt:
+        return []
+    g, c = summ[STRONG], rt["best"]
+    S = short(STRONG)
+    out = ["## Hybrid routing: cheapest setup close to GLM 5.3", "",
+           f"A first-pass model answers every task. If its answer is on a risky list, the same prompt goes to "
+           f"{LABELS[STRONG]} and its answer is used. An answer is risky when the first model's precision on it is "
+           f"below the threshold; with *{S} must help*, only answers where {S} is right more often on those tasks "
+           f"are kept. Accuracy is held out: the list is built on {FOLDS - 1}/{FOLDS} of the pairs and scored on "
+           f"the rest, averaged over {SEEDS} shuffles. Escalated tasks pay for both calls. Target: within "
+           f"{100 * TARGET_GAP:.0f} point of {S} only ({fmt_pct(g['acc'])}, ${g['cost_task'] * 1e6:,.0f} per 1M tasks).",
+           ""]
+    out += [f"| First pass | Rule | Accuracy, held out | Sent to {S} | Cost per 1M tasks | vs {S} only |",
+            "|---|---|---:|---:|---:|---:|"]
+    for p in ("tev", "jev"):
+        if p in summ:
+            out.append(f"| {short(p)} only | – | {fmt_pct(summ[p]['acc'])} | 0% | ${summ[p]['cost_task'] * 1e6:,.0f} | "
+                       f"{g['cost_task'] / summ[p]['cost_task']:.0f}× cheaper |")
+    for x in rt["configs"]:
+        name = rule_text(x).replace(f"and {S} does better", f"+ {S} must help")
+        row = (f"{short(x['base'])} → {S} | {name} | {fmt_pct(x['acc'])} | {100 * x['escalated']:.1f}% | "
+               f"${x['cost_task'] * 1e6:,.0f} | {g['cost_task'] / x['cost_task']:.1f}× cheaper")
+        out.append(f"| **{row.replace(' | ', '** | **')}** |" if x is c else f"| {row} |")
+    out.append(f"| {S} only | – | {fmt_pct(g['acc'])} | 100% | ${g['cost_task'] * 1e6:,.0f} | – |")
+    out += ["", f"Bold is the recommended setup. The threshold is itself picked from this sweep, so its held-out "
+                f"number is slightly optimistic.", ""]
+    out += [f"**Risky answers in the recommended setup** ({short(c['base'])} first, {rule_text(c)}, built on all "
+            f"items)", "",
+            f"| Task family | Answer | Times {short(c['base'])} gave it | {short(c['base'])} precision | "
+            f"{S} accuracy on those tasks |", "|---|---|---:|---:|---:|"]
+    strong = {x.item.id: x for x in rows[STRONG]}
+    for (cat, lab), m in sorted(c["risky"].items(), key=lambda kv: (kv[1]["precision"], kv[0])):
+        hit = [strong[x.item.id].correct for x in rows[c["base"]] if x.item.category == cat and x.key == lab]
+        out.append(f"| `{cat}` | `{lab}` | {m['predicted']} | {fmt_pct(m['precision'])} | {fmt_pct(sum(hit) / len(hit))} |")
+    out.append("")
+    return out
+
+def write_readme(section: str, readme: Path = ROOT / "README.md", start: str = START, end: str = END) -> None:
     text = readme.read_text()
-    if START not in text or END not in text:
-        raise SystemExit(f"README is missing {START} / {END} markers")
-    pre, rest = text.split(START, 1)
-    _, post = rest.split(END, 1)
-    readme.write_text(f"{pre}{START}\n{section}\n{END}{post}")
+    if start not in text or end not in text:
+        raise SystemExit(f"README is missing {start} / {end} markers")
+    pre, rest = text.split(start, 1)
+    _, post = rest.split(end, 1)
+    readme.write_text(f"{pre}{start}\n{section}\n{end}{post}")
 
 
 def main() -> None:
@@ -669,12 +804,14 @@ def main() -> None:
     load_env()
     providers = args.provider or [p for p in DEFAULT_PROVIDERS if (RESULTS_DIR / f"{p}.jsonl").exists()]
     items = load_items()
-    full, short = render(providers, items), render_summary(providers, items)
+    full, summary = render(providers, items), render_summary(providers, items)
+    rec = render_recommendation(providers, items)
     if args.stdout:
-        print(short, "\n\n---\n", full, sep="\n")
+        print(rec, "\n\n---\n", summary, "\n\n---\n", full, sep="\n")
     else:
         (ROOT / "RESULTS.md").write_text(full + "\n")
-        write_readme(short)
+        write_readme(summary)
+        write_readme(rec, start=ROUTE_START, end=ROUTE_END)
         print("README.md summary and RESULTS.md updated")
 
 

@@ -224,6 +224,46 @@ Per label, as precision / recall (%). *n* is how many items have that label as t
 
 </details>
 
+## Hybrid routing: cheapest setup close to GLM 5.3
+
+A first-pass model answers every task. If its answer is on a risky list, the same prompt goes to GLM 5.3 (AI Space) and its answer is used. An answer is risky when the first model's precision on it is below the threshold; with *GLM 5.3 must help*, only answers where GLM 5.3 is right more often on those tasks are kept. Accuracy is held out: the list is built on 4/5 of the pairs and scored on the rest, averaged over 3 shuffles. Escalated tasks pay for both calls. Target: within 1 point of GLM 5.3 only (99.0%, $810 per 1M tasks).
+
+| First pass | Rule | Accuracy, held out | Sent to GLM 5.3 | Cost per 1M tasks | vs GLM 5.3 only |
+|---|---|---:|---:|---:|---:|
+| TEV only | – | 90.0% | 0% | $10 | 78× cheaper |
+| JEV only | – | 97.2% | 0% | $20 | 41× cheaper |
+| TEV → GLM 5.3 | precision < 80% | 94.4% | 18.9% | $163 | 5.0× cheaper |
+| TEV → GLM 5.3 | precision < 85% | 96.2% | 27.9% | $236 | 3.4× cheaper |
+| TEV → GLM 5.3 | precision < 90% | 96.4% | 31.3% | $264 | 3.1× cheaper |
+| TEV → GLM 5.3 | precision < 95% | 97.1% | 39.0% | $326 | 2.5× cheaper |
+| TEV → GLM 5.3 | precision < 100% | 97.1% | 41.9% | $350 | 2.3× cheaper |
+| TEV → GLM 5.3 | precision < 80% + GLM 5.3 must help | 94.2% | 17.3% | $151 | 5.4× cheaper |
+| TEV → GLM 5.3 | precision < 85% + GLM 5.3 must help | 96.1% | 25.8% | $219 | 3.7× cheaper |
+| TEV → GLM 5.3 | precision < 90% + GLM 5.3 must help | 96.2% | 28.1% | $238 | 3.4× cheaper |
+| TEV → GLM 5.3 | precision < 95% + GLM 5.3 must help | 96.9% | 35.8% | $300 | 2.7× cheaper |
+| TEV → GLM 5.3 | precision < 100% + GLM 5.3 must help | 96.9% | 38.7% | $323 | 2.5× cheaper |
+| JEV → GLM 5.3 | precision < 80% | 97.3% | 2.6% | $41 | 20.0× cheaper |
+| JEV → GLM 5.3 | precision < 85% | 97.8% | 6.7% | $74 | 10.9× cheaper |
+| JEV → GLM 5.3 | precision < 90% | 98.1% | 12.1% | $117 | 6.9× cheaper |
+| JEV → GLM 5.3 | precision < 95% | 98.3% | 18.0% | $165 | 4.9× cheaper |
+| JEV → GLM 5.3 | precision < 100% | 98.5% | 21.3% | $192 | 4.2× cheaper |
+| JEV → GLM 5.3 | precision < 80% + GLM 5.3 must help | 97.3% | 1.5% | $32 | 25.5× cheaper |
+| JEV → GLM 5.3 | precision < 85% + GLM 5.3 must help | 97.8% | 4.2% | $53 | 15.2× cheaper |
+| **JEV → GLM 5.3** | **precision < 90% + GLM 5.3 must help** | **98.1%** | **8.2%** | **$86** | **9.4× cheaper** |
+| JEV → GLM 5.3 | precision < 95% + GLM 5.3 must help | 98.3% | 14.2% | $134 | 6.0× cheaper |
+| JEV → GLM 5.3 | precision < 100% + GLM 5.3 must help | 98.5% | 17.5% | $161 | 5.0× cheaper |
+| GLM 5.3 only | – | 99.0% | 100% | $810 | – |
+
+Bold is the recommended setup. The threshold is itself picked from this sweep, so its held-out number is slightly optimistic.
+
+**Risky answers in the recommended setup** (JEV first, precision < 90% and GLM 5.3 does better, built on all items)
+
+| Task family | Answer | Times JEV gave it | JEV precision | GLM 5.3 accuracy on those tasks |
+|---|---|---:|---:|---:|
+| `agent_routing` | `respond_directly` | 3 | 66.7% | 100.0% |
+| `returns_policy` | `approve_store_credit` | 8 | 75.0% | 100.0% |
+| `returns_policy` | `approve_full_refund` | 25 | 88.0% | 100.0% |
+
 **Prompt sensitivity.** The same 400 items run with three prompt versions for TEV and JEV. Δ is the accuracy change from each model's default prompt.
 
 | Prompt | TEV (Together) accuracy | TEV (Together) Δ | TEV (Together) pair accuracy | JEV (AI Space) accuracy | JEV (AI Space) Δ | JEV (AI Space) pair accuracy |
