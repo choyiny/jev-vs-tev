@@ -11,7 +11,52 @@ So we tested whether a $17 open fine-tune can do Jev's job. Both models get the 
 ## Results
 
 <!-- RESULTS:START -->
-_No run yet. See [Reproducing](#reproducing)._
+_Run on 2026-09-25 · 400 items / 200 contrastive pairs · 8 task families._
+
+**JEV (AI Space)** is more accurate by 7.3 points; **TEV (Together)** is 2.7× faster at p50; **TEV (Together)** is 1.9× cheaper per task.
+
+| Cost · Speed · Accuracy | TEV (Together) | JEV (AI Space) |
+|---|---:|---:|
+| Cost per task | **$0.0000103** | $0.0000196 |
+| Cost per 1M tasks | **$10.33** | $19.64 |
+| Speed: latency p50 | **173 ms** | 459 ms |
+| Speed: latency p95 | **214 ms** | 950 ms |
+| Accuracy | 90.0% | **97.2%** |
+| Accuracy 95% CI | 87.0%–92.5% | 95.5%–98.8% |
+| Pair accuracy (both halves right) | 80.0% | **95.0%** |
+
+**Details**
+
+| Metric | TEV (Together) | JEV (AI Space) |
+|---|---:|---:|
+| Model version served | `together/Tev1-4B-experimental` | `jev-1.13.0` |
+| Billed tokens per task, in / out | 246 / 2.0 | 468 / 57.8 |
+| Unusable output | 0.0% | 0.0% |
+| Calibration ECE ↓ | 0.031 | 0.020 |
+| Brier score ↓ | 0.158 | 0.041 |
+
+**Head to head.** Both right on 356, both wrong on 7. TEV (Together) alone right on 4; JEV (AI Space) alone right on 33. Exact McNemar p = 1.08e-06 (significant at 0.05).
+
+**Accuracy by task family**
+
+| Task family | n | Majority baseline | TEV (Together) | JEV (AI Space) |
+|---|---:|---:|---:|---:|
+| `action_review` | 50 | 48.0% | 82.0% | **100.0%** |
+| `agent_routing` | 50 | 12.0% | 94.0% | **98.0%** |
+| `claim_support` | 50 | 50.0% | 94.0% | **96.0%** |
+| `content_moderation` | 50 | 50.0% | 84.0% | **98.0%** |
+| `returns_policy` | 50 | 46.0% | 88.0% | **90.0%** |
+| `review_sentiment` | 50 | 30.0% | 84.0% | **98.0%** |
+| `support_intent` | 50 | 6.0% | 100.0% | 100.0% |
+| `ticket_triage` | 50 | 16.0% | 94.0% | **98.0%** |
+
+**Accuracy by difficulty**
+
+| Difficulty | n | TEV (Together) | JEV (AI Space) |
+|---|---:|---:|---:|
+| easy | 230 | 94.3% | 98.3% |
+| hard | 170 | 84.1% | 95.9% |
+
 <!-- RESULTS:END -->
 
 ## What's being measured
@@ -48,16 +93,18 @@ Claude wrote all items for this benchmark. They are original text, not taken fro
 - **Accuracy, 95% CI**: bootstrap that resamples whole pairs, since the two halves of a pair aren't independent.
 - **Head to head**: exact McNemar test on the items where exactly one model is right.
 - **Unusable output**: replies that don't map to an option (TEV), or errors after 5 retries. These count as wrong.
-- **Latency**: client-side wall-clock time per request, p50 and p95. Both models run from the same machine, one after the other, 4 requests in flight, with 3 unrecorded warm-up calls. This includes network time to each provider, so it measures what a caller sees, not the model alone.
-- **Cost per 1k decisions**: average tokens each API reports × list price from `.env`.
+- **Speed**: client-side wall-clock time per request, p50 and p95. Both models run from the same machine, one after the other, 4 requests in flight, with 3 unrecorded warm-up calls. This includes network time to each provider, so it measures what a caller sees, not the model alone.
+- **Cost per task**: what one decision costs. For each call we take the input and output tokens the API billed and multiply by list price, then average over all 400 tasks. Both models list at $0.042 per 1M input tokens with output free ([Together](https://x.com/togethercompute/status/2102882216950763814), [TypeSafe](https://flaviocopes.com/jev/)). So the cost gap comes from how many tokens each API bills for the same task.
 - **Calibration**: ECE (10 bins) and Brier score, computed on each model's probability for its top choice. TEV's probabilities come from first-token logprobs, renormalised over the option letters.
 
 ### Caveats
 
 - A language model wrote the data, and the same kind of model checked the labels. Labels were validated structurally and spot-checked. A careful human could still dispute an item or two.
+- Both models missed the same 7 items. We reviewed each one. Four are clearly labelled and both models simply got them wrong: a percentage calculation, two date-window rules, and a moderator report that quotes a threat. Three could be argued: `review_sentiment-021a`, `ticket_triage-022b` and `claim_support-006b`. We kept all labels as written. Because both models missed these items, they don't affect the gap between them.
 - Labels aren't balanced within every family. In `claim_support`, `content_moderation` and `action_review`, always picking the most common answer scores about 50%. The per-family table shows this majority baseline next to each model.
 - The dataset is small (400 items), so category-level numbers have wide intervals. Rely on the headline CI and the McNemar p-value.
-- Latency depends on region and provider load at run time.
+- Latency depends on region and provider load at run time. JEV is reached through the AI Space gateway, so its latency includes that extra hop. TEV is called on Together directly.
+- The two APIs count tokens differently. For the same text, JEV bills about twice as many input tokens as TEV, probably because TypeSafe adds its own prompt around the input. Cost per task already includes this difference.
 - Only `choice` questions are tested. Jev's `score` and `noul` types have no TEV equivalent here.
 
 ## Reproducing

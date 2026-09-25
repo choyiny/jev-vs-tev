@@ -136,7 +136,10 @@ def summarize(provider: str, rows: list[Row]) -> dict:
     avg_in = statistics.fmean(r.input_tokens for r in rows)
     avg_out = statistics.fmean(r.output_tokens for r in rows)
     pr = price(provider)
-    cost_1k = (avg_in * pr[0] + avg_out * pr[1]) / 1e6 * 1000 if pr else None
+    # Cost per task: each call's billed tokens at list price, averaged over tasks.
+    cost_task = (
+        statistics.fmean((r.input_tokens * pr[0] + r.output_tokens * pr[1]) / 1e6 for r in rows) if pr else None
+    )
     return {
         "provider": provider,
         "model": statistics.mode(r.model for r in rows),
@@ -149,7 +152,7 @@ def summarize(provider: str, rows: list[Row]) -> dict:
         "p95": pct(lat, 0.95),
         "avg_in": avg_in,
         "avg_out": avg_out,
-        "cost_1k": cost_1k,
+        "cost_task": cost_task,
         "ece": ece(rows),
         "brier": brier(rows),
     }
@@ -161,6 +164,19 @@ def fmt_pct(x: float | None) -> str:
 
 def fmt_num(x: float | None, spec: str = ".3f") -> str:
     return "n/a" if x is None or (isinstance(x, float) and math.isnan(x)) else format(x, spec)
+
+
+def verdict(a: dict, b: dict) -> str:
+    """One-sentence summary comparing the first two providers on cost, speed and accuracy."""
+    parts = []
+    hi, lo = (a, b) if a["acc"] >= b["acc"] else (b, a)
+    parts.append(f"**{LABELS.get(hi['provider'])}** is more accurate by {100 * (hi['acc'] - lo['acc']):.1f} points")
+    fast, slow = (a, b) if a["p50"] <= b["p50"] else (b, a)
+    parts.append(f"**{LABELS.get(fast['provider'])}** is {slow['p50'] / fast['p50']:.1f}× faster at p50")
+    if a["cost_task"] and b["cost_task"]:
+        cheap, dear = (a, b) if a["cost_task"] <= b["cost_task"] else (b, a)
+        parts.append(f"**{LABELS.get(cheap['provider'])}** is {dear['cost_task'] / cheap['cost_task']:.1f}× cheaper per task")
+    return "; ".join(parts) + "."
 
 
 def render(providers: list[str], items: list[Item]) -> str:
@@ -177,21 +193,41 @@ def render(providers: list[str], items: list[Item]) -> str:
     out.append(f"_Run on {date.today().isoformat()} · {len(common)} items / {n_pairs} contrastive pairs · "
                f"{len(cats)} task families._\n")
 
-    # Headline table
-    head = "| Metric | " + " | ".join(LABELS.get(p, p) for p in providers) + " |"
-    out += [head, "|---|" + "---:|" * len(providers)]
-
     def line(name: str, f) -> None:
         out.append(f"| {name} | " + " | ".join(f(summ[p]) for p in providers) + " |")
 
-    line("Model", lambda s: f"`{s['model']}`")
-    line("Accuracy (95% CI)", lambda s: f"{fmt_pct(s['acc'])} ({fmt_pct(s['ci'][0])}–{fmt_pct(s['ci'][1])})")
-    line("Pair accuracy (both halves right)", lambda s: fmt_pct(s["pair_acc"]))
+    def header(title: str) -> None:
+        out.append(f"| {title} | " + " | ".join(LABELS.get(p, p) for p in providers) + " |")
+        out.append("|---|" + "---:|" * len(providers))
+
+    if len(providers) >= 2:
+        out += [verdict(summ[providers[0]], summ[providers[1]]), ""]
+
+    def best(name: str, metric, fmt, lower_is_better: bool) -> None:
+        """A row where the winning value is bolded."""
+        vals = {p: metric(summ[p]) for p in providers}
+        known = [v for v in vals.values() if v is not None]
+        win = (min if lower_is_better else max)(known) if len(known) > 1 else None
+        cells = ["n/a" if v is None else (f"**{fmt(v)}**" if v == win and known.count(win) == 1 else fmt(v))
+                 for v in vals.values()]
+        out.append(f"| {name} | " + " | ".join(cells) + " |")
+
+    # Headline: cost, speed, accuracy
+    header("Cost · Speed · Accuracy")
+    best("Cost per task", lambda s: s["cost_task"], lambda v: f"${v:.7f}", True)
+    best("Cost per 1M tasks", lambda s: s["cost_task"] and s["cost_task"] * 1e6, lambda v: f"${v:,.2f}", True)
+    best("Speed: latency p50", lambda s: s["p50"], lambda v: f"{v:.0f} ms", True)
+    best("Speed: latency p95", lambda s: s["p95"], lambda v: f"{v:.0f} ms", True)
+    best("Accuracy", lambda s: s["acc"], fmt_pct, False)
+    line("Accuracy 95% CI", lambda s: f"{fmt_pct(s['ci'][0])}–{fmt_pct(s['ci'][1])}")
+    best("Pair accuracy (both halves right)", lambda s: s["pair_acc"], fmt_pct, False)
+    out.append("")
+
+    out += ["**Details**", ""]
+    header("Metric")
+    line("Model version served", lambda s: f"`{s['model']}`")
+    line("Billed tokens per task, in / out", lambda s: f"{s['avg_in']:.0f} / {s['avg_out']:.1f}")
     line("Unusable output", lambda s: fmt_pct(s["unusable"]))
-    line("Latency p50", lambda s: f"{fmt_num(s['p50'], '.0f')} ms")
-    line("Latency p95", lambda s: f"{fmt_num(s['p95'], '.0f')} ms")
-    line("Avg tokens in / out", lambda s: f"{s['avg_in']:.0f} / {s['avg_out']:.1f}")
-    line("Cost per 1k decisions", lambda s: "n/a" if s["cost_1k"] is None else f"${s['cost_1k']:.4f}")
     line("Calibration ECE ↓", lambda s: fmt_num(s["ece"]))
     line("Brier score ↓", lambda s: fmt_num(s["brier"]))
     out.append("")

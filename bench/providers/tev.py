@@ -54,7 +54,8 @@ def build_body(item: Item, model: str, logprobs: int) -> dict:
         "chat_template_kwargs": {"enable_thinking": False},
     }
     if logprobs:
-        body["logprobs"] = logprobs
+        body["logprobs"] = True
+        body["top_logprobs"] = logprobs
     return body
 
 

@@ -123,7 +123,8 @@ def main() -> None:
     if problems := validate(items):
         sys.exit("dataset invalid:\n" + "\n".join(problems))
     if args.limit:
-        items = items[: args.limit + args.limit % 2]
+        keep = sorted({it.pair_id for it in items})[: (args.limit + 1) // 2]
+        items = [it for it in items if it.pair_id in keep]
 
     # Providers run one after another so neither competes with the other for bandwidth.
     for name in args.provider:

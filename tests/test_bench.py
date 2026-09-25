@@ -49,6 +49,8 @@ def test_tev_body_matches_launch_post_settings():
     assert body["max_tokens"] == 8
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
     assert "logprobs" not in body
+    with_lp = tev.build_body(ITEM, "m", logprobs=5)
+    assert (with_lp["logprobs"], with_lp["top_logprobs"]) == (True, 5)
     user = json.loads(body["messages"][1]["content"])
     assert [o["label"] for o in user["options"]] == ["A", "B", "C"]
     assert user["options"][0]["key"] == "duplicate_charge"
