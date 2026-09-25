@@ -209,7 +209,7 @@ def speed(summ: dict) -> tuple[str, int]:
     dy = 80
     h = 136 + 48 * len(order) + 48 - dy
     s = header("speed", "TEV answers in under a fifth of a second",
-               "Horizontal bar chart of median latency per call: TEV 173 ms, JEV 459 ms, GLM 5.3 2,879 ms, "
+               "Horizontal bar chart of median latency per call: TEV 173 ms, JEV 459 ms, GLM 5.3 2,883 ms, "
                "Opus 5.5 2,477 ms.", h, dy)
     x0, x1, top = 168, 760, 112
     vmax = 3000

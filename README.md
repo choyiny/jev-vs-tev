@@ -38,28 +38,28 @@ Claude wrote all 400 items for this benchmark, so none come from the public data
 
 | | TEV (Together) | JEV (AI Space) | GLM 5.3 (AI Space) | Claude Opus 5.5 (AI Space) |
 |---|---:|---:|---:|---:|
-| Cost per task | **$0.0000103** | $0.0000196 | $0.0008097 | $0.0017083 |
-| Speed (p50) | **173 ms** | 459 ms | 2,879 ms | 2,477 ms |
+| Cost per task | **$0.0000103** | $0.0000196 | $0.0008091 | $0.0017077 |
+| Speed (p50) | **173 ms** | 459 ms | 2,883 ms | 2,477 ms |
 | Accuracy | 90.0% | 97.2% | 99.0% | **99.2%** |
 | Both halves of a pair right | 80.0% | 95.0% | 98.0% | **98.5%** |
 | Macro F1 (every answer weighted equally) | 88.5% | 95.5% | 98.0% | **99.4%** |
 
-400 held-out items (200 contrastive pairs, 8 task families). The whole experiment cost **$1.08** in API calls. Per-label precision and recall, per-family scores, prompt variants, calibration and significance: [RESULTS.md](RESULTS.md).
+400 held-out items (200 contrastive pairs, 8 task families). The whole experiment cost **$1.10** in API calls. Per-label precision and recall, per-family scores, prompt variants, calibration and significance: [RESULTS.md](RESULTS.md).
 <!-- RESULTS:END -->
 
-![Median latency per call: TEV 173 ms, JEV 459 ms, Opus 5.5 2,477 ms, GLM 5.3 2,879 ms](docs/img/speed.png)
+![Median latency per call: TEV 173 ms, JEV 459 ms, Opus 5.5 2,477 ms, GLM 5.3 2,883 ms](docs/img/speed.png)
 
 ## Recommendation
 
 <!-- ROUTING:START -->
-**Use JEV for every task, and re-ask GLM 5.3 only for the few answers JEV tends to get wrong.** On tasks held out from tuning, this scores 98.1% against GLM 5.3's 99.0%, and costs 89% less: $86 per million tasks instead of $810.
+**Use JEV for every task, and re-ask GLM 5.3 only for the few answers JEV tends to get wrong.** On tasks held out from tuning, this scores 98.1% against GLM 5.3's 99.0%, and costs 89% less: $86 per million tasks instead of $809.
 
 | Setup | Accuracy | Sent to GLM 5.3 | Cost per 1M tasks | vs GLM 5.3 only | Latency p50 |
 |---|---:|---:|---:|---:|---:|
 | JEV only | 97.2% | 0% | $20 | 41× cheaper | 459 ms |
-| **Hybrid (recommended)** | **98.1%** | 8% | **$86** | **9.4× cheaper** | 478 ms |
+| **Hybrid (recommended)** | **98.1%** | 8% | **$86** | **9.4× cheaper** | 479 ms |
 | Hybrid, escalate every answer JEV has missed | 98.5% | 18% | $161 | 5.0× cheaper | – |
-| GLM 5.3 only | 99.0% | 100% | $810 | – | 2,879 ms |
+| GLM 5.3 only | 99.0% | 100% | $809 | – | 2,883 ms |
 
 **The rule.** JEV answers first. If its answer is one of these 3, send the same prompt to GLM 5.3 and use GLM 5.3's answer: `respond_directly` (67%), `approve_store_credit` (75%), `approve_full_refund` (88%). The percentage is JEV's precision on that answer, i.e. how often it's right when it gives it. An answer is on the list when precision < 90% and GLM 5.3 does better on the labelled tasks. Routing only looks at JEV's answer, so it works at run time.
 

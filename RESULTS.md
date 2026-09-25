@@ -6,15 +6,15 @@ _Run on 2026-09-25 · 400 items / 200 contrastive pairs · 8 task families._
 
 **JEV (AI Space)** is more accurate by 7.3 points; **TEV (Together)** is 2.7× faster at p50; **TEV (Together)** is 1.9× cheaper per task.
 
-For reference, GLM 5.3 (AI Space) scores 99.0% at 2879 ms p50, $0.0008097 per task.
-For reference, Claude Opus 5.5 (AI Space) scores 99.2% at 2477 ms p50, $0.0017083 per task.
+For reference, GLM 5.3 (AI Space) scores 99.0% at 2883 ms p50, $0.0008091 per task.
+For reference, Claude Opus 5.5 (AI Space) scores 99.2% at 2477 ms p50, $0.0017077 per task.
 
 | Cost · Speed · Accuracy | TEV (Together) | JEV (AI Space) | GLM 5.3 (AI Space) | Claude Opus 5.5 (AI Space) |
 |---|---:|---:|---:|---:|
-| Cost per task | **$0.0000103** | $0.0000196 | $0.0008097 | $0.0017083 |
-| Cost per 1M tasks | **$10.33** | $19.64 | $809.69 | $1,708.34 |
-| Speed: latency p50 | **173 ms** | 459 ms | 2879 ms | 2477 ms |
-| Speed: latency p95 | **214 ms** | 950 ms | 6705 ms | 8167 ms |
+| Cost per task | **$0.0000103** | $0.0000196 | $0.0008091 | $0.0017077 |
+| Cost per 1M tasks | **$10.33** | $19.64 | $809.08 | $1,707.74 |
+| Speed: latency p50 | **173 ms** | 459 ms | 2883 ms | 2477 ms |
+| Speed: latency p95 | **215 ms** | 954 ms | 6705 ms | 8167 ms |
 | Accuracy | 90.0% | 97.2% | 99.0% | **99.2%** |
 | Accuracy 95% CI | 87.0%–92.5% | 95.5%–98.8% | 98.0%–99.8% | 98.2%–100.0% |
 | Pair accuracy (both halves right) | 80.0% | 95.0% | 98.0% | **98.5%** |
@@ -27,7 +27,7 @@ For reference, Claude Opus 5.5 (AI Space) scores 99.2% at 2477 ms p50, $0.001708
 | Metric | TEV (Together) | JEV (AI Space) | GLM 5.3 (AI Space) | Claude Opus 5.5 (AI Space) |
 |---|---:|---:|---:|---:|
 | Model version served | `together/Tev1-4B-experimental` | `jev-1.13.0` | `@cf/zai-org/glm-5.3` | `claude-opus-5-5` |
-| Billed tokens per task, in / out | 246 / 2.0 | 468 / 57.8 | 240 / 107.8 | 364 / 12.7 |
+| Billed tokens per task, in / out | 246 / 2.0 | 468 / 57.8 | 240 / 107.6 | 364 / 12.7 |
 | Unusable output | 0.0% | 0.0% | 0.0% | 0.0% |
 | Calibration ECE ↓ | 0.031 | 0.020 | n/a | n/a |
 | Brier score ↓ | 0.158 | 0.041 | n/a | n/a |
@@ -226,7 +226,7 @@ Per label, as precision / recall (%). *n* is how many items have that label as t
 
 ## Hybrid routing: cheapest setup close to GLM 5.3
 
-A first-pass model answers every task. If its answer is on a risky list, the same prompt goes to GLM 5.3 (AI Space) and its answer is used. An answer is risky when the first model's precision on it is below the threshold; with *GLM 5.3 must help*, only answers where GLM 5.3 is right more often on those tasks are kept. Accuracy is held out: the list is built on 4/5 of the pairs and scored on the rest, averaged over 3 shuffles. Escalated tasks pay for both calls. Target: within 1 point of GLM 5.3 only (99.0%, $810 per 1M tasks).
+A first-pass model answers every task. If its answer is on a risky list, the same prompt goes to GLM 5.3 (AI Space) and its answer is used. An answer is risky when the first model's precision on it is below the threshold; with *GLM 5.3 must help*, only answers where GLM 5.3 is right more often on those tasks are kept. Accuracy is held out: the list is built on 4/5 of the pairs and scored on the rest, averaged over 3 shuffles. Escalated tasks pay for both calls. Target: within 1 point of GLM 5.3 only (99.0%, $809 per 1M tasks).
 
 | First pass | Rule | Accuracy, held out | Sent to GLM 5.3 | Cost per 1M tasks | vs GLM 5.3 only |
 |---|---|---:|---:|---:|---:|
@@ -236,7 +236,7 @@ A first-pass model answers every task. If its answer is on a risky list, the sam
 | TEV → GLM 5.3 | precision < 85% | 96.2% | 27.9% | $236 | 3.4× cheaper |
 | TEV → GLM 5.3 | precision < 90% | 96.4% | 31.3% | $264 | 3.1× cheaper |
 | TEV → GLM 5.3 | precision < 95% | 97.1% | 39.0% | $326 | 2.5× cheaper |
-| TEV → GLM 5.3 | precision < 100% | 97.1% | 41.9% | $350 | 2.3× cheaper |
+| TEV → GLM 5.3 | precision < 100% | 97.1% | 41.9% | $349 | 2.3× cheaper |
 | TEV → GLM 5.3 | precision < 80% + GLM 5.3 must help | 94.2% | 17.3% | $151 | 5.4× cheaper |
 | TEV → GLM 5.3 | precision < 85% + GLM 5.3 must help | 96.1% | 25.8% | $219 | 3.7× cheaper |
 | TEV → GLM 5.3 | precision < 90% + GLM 5.3 must help | 96.2% | 28.1% | $238 | 3.4× cheaper |
@@ -252,7 +252,7 @@ A first-pass model answers every task. If its answer is on a risky list, the sam
 | **JEV → GLM 5.3** | **precision < 90% + GLM 5.3 must help** | **98.1%** | **8.2%** | **$86** | **9.4× cheaper** |
 | JEV → GLM 5.3 | precision < 95% + GLM 5.3 must help | 98.3% | 14.2% | $134 | 6.0× cheaper |
 | JEV → GLM 5.3 | precision < 100% + GLM 5.3 must help | 98.5% | 17.5% | $161 | 5.0× cheaper |
-| GLM 5.3 only | – | 99.0% | 100% | $810 | – |
+| GLM 5.3 only | – | 99.0% | 100% | $809 | – |
 
 Bold is the recommended setup. The threshold is itself picked from this sweep, so its held-out number is slightly optimistic.
 
@@ -278,9 +278,9 @@ Bold is the recommended setup. The threshold is itself picked from this sweep, s
 
 | Model | Billed calls | Input tokens | Output tokens | USD |
 |---|---:|---:|---:|---:|
-| TEV (Together) | 2,020 | 471,446 | 4,040 | $0.0198 (≈$0.0001 estimated) |
-| JEV (AI Space) | 2,043 | 938,528 | 118,074 | $0.0394 (≈$0.0007 estimated) |
-| GLM 5.3 (AI Space) | 405 | 97,071 | 43,670 | $0.3280 (≈$0.0042 estimated) |
-| Claude Opus 5.5 (AI Space) | 406 | 147,593 | 5,163 | $0.6936 (≈$0.0103 estimated) |
-| **Total** | 4,874 | 1,654,638 | 170,947 | **$1.08** |
+| TEV (Together) | 2,050 | 479,044 | 4,100 | $0.0201 (≈$0.0001 estimated) |
+| JEV (AI Space) | 2,073 | 953,020 | 119,452 | $0.0400 (≈$0.0007 estimated) |
+| GLM 5.3 (AI Space) | 411 | 98,673 | 44,631 | $0.3345 (≈$0.0042 estimated) |
+| Claude Opus 5.5 (AI Space) | 412 | 150,041 | 5,206 | $0.7043 (≈$0.0103 estimated) |
+| **Total** | 4,946 | 1,680,778 | 173,389 | **$1.10** |
 
