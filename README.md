@@ -2,6 +2,33 @@
 
 [Jev](https://flaviocopes.com/jev/) is TypeSafe's closed-source decision model. Together AI [trained a Jev-style model for $17](https://www.together.ai/blog/how-to-train-your-own-jev), `Tev1-4B-experimental` ([announcement](https://www.linkedin.com/feed/update/urn:li:activity:7508652815490105344)), but published no accuracy numbers. We tested it: same 400 new tasks for both models, with two frontier LLMs alongside for reference.
 
+## The task
+
+Every task is one multiple-choice decision. The model gets an input, a question, and 3–6 options, each a key plus a one-line description. It must return one key. Tasks come in pairs whose inputs differ by one small edit that flips the right answer:
+
+> **Question:** Under the agent action policy described in the options, how should this proposed action be handled?
+> **Options:** `auto_approve` (read-only, dev/staging, internal email) · `require_human_review` (non-destructive production writes, payments, external email) · `block` (destructive production operations)
+>
+> | | Input | Right answer |
+> |---|---|---|
+> | A | Target `prod-replica`: `SELECT count(*) FROM orders WHERE status = 'pending' …` | `auto_approve` |
+> | B | Target `prod-primary`: `UPDATE orders SET status = 'cancelled' WHERE id = 88213;` | `require_human_review` |
+
+400 tasks (200 pairs), 50 in each of 8 task families:
+
+| Family | The model decides | Options | Example answers |
+|---|---|---:|---|
+| `action_review` | Whether an AI agent's proposed shell, SQL, API or email action can run | 3 | `auto_approve`, `require_human_review`, `block` |
+| `agent_routing` | Which tool an agent should call next | 6 | `sql_query`, `web_search`, `ask_clarifying_question` |
+| `claim_support` | Whether a piece of evidence supports a claim | 3 | `supported`, `contradicted`, `not_enough_info` |
+| `content_moderation` | What to do with a forum post under a written policy | 4 | `allow`, `remove_harassment`, `escalate_self_harm` |
+| `returns_policy` | How to rule on a return request under a written policy | 4–5 | `approve_full_refund`, `deny_outside_window` |
+| `review_sentiment` | The overall sentiment of a product review | 5 | `very_negative` … `very_positive` |
+| `support_intent` | What a customer message is asking for | 5–6 | `duplicate_charge`, `cancel_subscription` |
+| `ticket_triage` | A bug report's severity or owning team | 4–6 | `sev1_outage`, `payments`, `not_a_bug` |
+
+Claude wrote all 400 items for this benchmark, so none come from the public datasets TEV was trained on. They are in [`data/`](data/), and [`data/SPEC.md`](data/SPEC.md) describes the format.
+
 ![Cost vs accuracy: TEV and JEV cost about 1–2 cents per 1,000 tasks; GLM 5.3 and Opus 5.5 score about 2 points higher at 41–87× the price](docs/img/cost-vs-accuracy.png)
 
 ## Results
@@ -26,7 +53,7 @@
 
 ![Two halves of a contrastive pair differ by one word; both go through the same prompt to four models, which are scored on accuracy, pair accuracy, cost and speed](docs/img/how-it-works.png)
 
-The 400 tasks are new, and none come from the public datasets TEV was trained on. Details and caveats: [METHODOLOGY.md](METHODOLOGY.md).
+Details and caveats: [METHODOLOGY.md](METHODOLOGY.md).
 
 ## Prompts matter too
 
