@@ -1,0 +1,69 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>how-it-works</title><link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"><style>*{margin:0;padding:0}body{background:#f5f5f5}svg{display:block}</style></head><body>
+<svg viewBox="0 0 880 400" width="880" height="400" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="how-it-works-title how-it-works-desc">
+<title id="how-it-works-title">One small edit, four models, four scores</title>
+<desc id="how-it-works-desc">Flow diagram: two halves of a contrastive pair differ by one word and have different correct answers; both go through the same prompt to TEV, JEV, GLM 5.3 and Opus 5.5, and each model is scored on accuracy, pair accuracy, cost per task and speed.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<text x="32" y="36" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="500" text-anchor="start" letter-spacing="0.14em">HOW THE BENCHMARK WORKS</text>
+<text x="32" y="72" fill="#2d3142" font-size="28" font-family="'Instrument Serif', Georgia, serif" font-weight="400" text-anchor="start" >One small edit, four models, four scores</text>
+<text x="32" y="120" fill="#7a8399" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="500" text-anchor="start" letter-spacing="0.14em">1 · CONTRASTIVE PAIR</text>
+<text x="280" y="120" fill="#7a8399" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="500" text-anchor="start" letter-spacing="0.14em">2 · SAME PROMPT</text>
+<text x="484" y="120" fill="#7a8399" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="500" text-anchor="start" letter-spacing="0.14em">3 · FOUR MODELS</text>
+<text x="704" y="120" fill="#7a8399" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="500" text-anchor="start" letter-spacing="0.14em">4 · SCORED ON</text>
+<line x1="248" y1="172" x2="278" y2="172" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="248" y1="292" x2="278" y2="292" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="432" y1="160" x2="482" y2="160" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="652" y1="160" x2="702" y2="160" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="432" y1="220" x2="482" y2="220" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="652" y1="220" x2="702" y2="220" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="432" y1="280" x2="482" y2="280" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="652" y1="280" x2="702" y2="280" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="432" y1="340" x2="482" y2="340" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="652" y1="340" x2="702" y2="340" stroke="#4f5d75" stroke-width="1" marker-end="url(#arrow)"/>
+<rect x="32" y="132" width="216" height="80" rx="6" fill="#f5f5f5"/>
+<rect x="32" y="132" width="216" height="80" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+<text x="48" y="156" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >Half A</text>
+<text x="48" y="176" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >…on flags-staging</text>
+<text x="48" y="196" fill="#2d3142" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="500" text-anchor="start" >→ auto_approve</text>
+<rect x="32" y="252" width="216" height="80" rx="6" fill="#f5f5f5"/>
+<rect x="32" y="252" width="216" height="80" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+<text x="48" y="276" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >Half B</text>
+<text x="48" y="296" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >…on flags-prod</text>
+<text x="48" y="316" fill="#2d3142" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="500" text-anchor="start" >→ require_human_review</text>
+<text x="140" y="232" fill="#4f5d75" font-size="16" font-family="'Instrument Serif', Georgia, serif" font-weight="400" text-anchor="middle" font-style="italic">one word flips the answer</text>
+<rect x="280" y="136" width="152" height="228" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<text x="296" y="164" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >Same prompt</text>
+<text x="296" y="196" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >system prompt</text>
+<text x="296" y="220" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >state</text>
+<text x="296" y="244" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >question</text>
+<text x="296" y="268" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >options A–D</text>
+<text x="296" y="328" fill="#7a8399" font-size="12" font-family="'Geist', system-ui, sans-serif" font-weight="400" text-anchor="start" >JEV gets it as a</text>
+<text x="296" y="344" fill="#7a8399" font-size="12" font-family="'Geist', system-ui, sans-serif" font-weight="400" text-anchor="start" >choice question</text>
+<rect x="484" y="136" width="168" height="48" rx="6" fill="#f5f5f5"/>
+<rect x="484" y="136" width="168" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<text x="500" y="156" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >TEV</text>
+<text x="500" y="174" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >$17 fine-tune</text>
+<rect x="484" y="196" width="168" height="48" rx="6" fill="#f5f5f5"/>
+<rect x="484" y="196" width="168" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+<text x="500" y="216" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >JEV</text>
+<text x="500" y="234" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >TypeSafe, closed</text>
+<rect x="484" y="256" width="168" height="48" rx="6" fill="#f5f5f5"/>
+<rect x="484" y="256" width="168" height="48" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+<text x="500" y="276" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >GLM 5.3</text>
+<text x="500" y="294" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >open-weights LLM</text>
+<rect x="484" y="316" width="168" height="48" rx="6" fill="#f5f5f5"/>
+<rect x="484" y="316" width="168" height="48" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+<text x="500" y="336" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >Opus 5.5</text>
+<text x="500" y="354" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >frontier LLM</text>
+<rect x="704" y="136" width="144" height="228" rx="6" fill="#f5f5f5"/>
+<rect x="704" y="136" width="144" height="228" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.2"/>
+<text x="720" y="164" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >Accuracy</text>
+<text x="720" y="184" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >of 400 items</text>
+<text x="720" y="220" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >Both halves</text>
+<text x="720" y="240" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >right, per pair</text>
+<text x="720" y="276" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >Cost per task</text>
+<text x="720" y="296" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >tokens × price</text>
+<text x="720" y="332" fill="#2d3142" font-size="16" font-family="'Geist', system-ui, sans-serif" font-weight="600" text-anchor="start" >Speed</text>
+<text x="720" y="352" fill="#4f5d75" font-size="12" font-family="'Geist Mono', ui-monospace, monospace" font-weight="400" text-anchor="start" >p50 per call</text>
+</svg>
+</body></html>

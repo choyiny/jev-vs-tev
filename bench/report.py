@@ -216,12 +216,6 @@ def render_summary(providers: list[str], items: list[Item]) -> str:
             "n/a" if v is None else (f"**{fmt(v)}**" if v == win and known.count(win) == 1 else fmt(v)) for v in vals
         ) + " |")
     out.append("")
-    prompts = prompt_summary(by_id, set(common))
-    if prompts:
-        out += ["### Prompts matter too", "",
-                "Same 400 items, same models, five prompt versions. Δ is the change from the default prompt; "
-                "*answers changed* counts items where the answer differs from the default prompt's answer.", ""]
-        out += prompts + [""]
     n_pairs = len({by_id[i].pair_id for i in common})
     t = spend.totals()
     cost = f" The whole experiment cost **${sum(r['usd'] for r in t.values()):.2f}** in API calls." if t else ""
@@ -333,6 +327,82 @@ def render(providers: list[str], items: list[Item]) -> str:
     out += prompt_sensitivity(by_id, set(common))
     out += spend_section()
     return "\n".join(out)
+
+
+def spend_section() -> list[str]:
+    """What the whole experiment cost, from results/spend.jsonl."""
+    t = spend.totals()
+    if not t:
+        return []
+    order = [p for p in ("tev", "jev", "glm", "opus") if p in t] + sorted(set(t) - {"tev", "jev", "glm", "opus"})
+    out = ["**What this experiment cost.** Every billed API call, including prompt variants, warm-ups and retries, "
+           "priced at list rates. Pre-ledger calls that left no result row are estimated from average tokens per call.", ""]
+    out += ["| Model | Billed calls | Input tokens | Output tokens | USD |", "|---|---:|---:|---:|---:|"]
+    for p in order:
+        r = t[p]
+        est = f" (≈${r['usd_estimated']:.4f} estimated)" if r["usd_estimated"] else ""
+        out.append(f"| {LABELS.get(p, p)} | {r['calls']:,} | {r['input_tokens']:,} | {r['output_tokens']:,} | "
+                   f"${r['usd']:.4f}{est} |")
+    out.append(f"| **Total** | {sum(r['calls'] for r in t.values()):,} | "
+               f"{sum(r['input_tokens'] for r in t.values()):,} | {sum(r['output_tokens'] for r in t.values()):,} | "
+               f"**${sum(r['usd'] for r in t.values()):.2f}** |")
+    out.append("")
+    return out
+
+
+def prompt_data(by_id: dict[str, Item], common: set[str]) -> dict:
+    """{(model, variant): {"acc", "pair_acc", "delta", "changed"}} for TEV and JEV prompt variants."""
+    from bench.providers.tev import VARIANTS
+
+    data = {}
+    for base in ("tev", "jev"):
+        default = None
+        for v in VARIANTS:
+            spec = base if v == "default" else f"{base}.{v}"
+            if not (RESULTS_DIR / f"{spec}.jsonl").exists():
+                continue
+            loaded = load_rows(spec, by_id)
+            rows = [loaded[i] for i in sorted(common) if i in loaded]
+            if len(rows) != len(common):
+                continue
+            s_ = summarize(spec, rows)
+            if v == "default":
+                default = rows
+            changed = None if default is None else sum(a.key != b.key for a, b in zip(rows, default)) / len(rows)
+            data[(base, v)] = {"acc": s_["acc"], "pair_acc": s_["pair_acc"], "changed": changed}
+        if (base, "default") in data:
+            for (b_, v), d in data.items():
+                if b_ == base:
+                    d["delta"] = d["acc"] - data[(base, "default")]["acc"]
+    return data
+
+
+def prompt_sensitivity(by_id: dict[str, Item], common: set[str]) -> list[str]:
+    """Full prompt-variant table for RESULTS.md."""
+    data = prompt_data(by_id, common)
+    variants = [v for v in VARIANT_LABELS if any((b, v) in data for b in ("tev", "jev"))]
+    bases = [b for b in ("tev", "jev") if (b, "default") in data]
+    if len(variants) < 2:
+        return []
+    out = ["**Prompt sensitivity.** The same 400 items with five prompt versions for TEV and JEV. "
+           "Δ is the accuracy change from the model's default prompt; *changed* is the share of answers "
+           "that differ from the default prompt's answer.", ""]
+    cols = [f"{LABELS[b]} {m}" for b in bases for m in ("accuracy", "Δ", "pair accuracy", "changed")]
+    out.append("| Prompt | " + " | ".join(cols) + " |")
+    out.append("|---|" + "---:|" * len(cols))
+    for v in variants:
+        cells = []
+        for b in bases:
+            d = data.get((b, v))
+            if not d:
+                cells += ["n/a"] * 4
+                continue
+            delta = "–" if v == "default" else f"{100 * d['delta']:+.1f}"
+            changed = "–" if v == "default" else fmt_pct(d["changed"])
+            cells += [fmt_pct(d["acc"]), delta, fmt_pct(d["pair_acc"]), changed]
+        out.append(f"| {VARIANT_LABELS[v]} | " + " | ".join(cells) + " |")
+    out.append("")
+    return out
 
 
 def spend_section() -> list[str]:
